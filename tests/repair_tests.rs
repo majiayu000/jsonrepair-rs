@@ -71,18 +71,12 @@ fn single_quotes_value() {
 
 #[test]
 fn curly_double_quotes() {
-    ok(
-        "\u{201C}hello\u{201D}",
-        r#""hello""#,
-    );
+    ok("\u{201C}hello\u{201D}", r#""hello""#);
 }
 
 #[test]
 fn curly_single_quotes() {
-    ok(
-        "\u{2018}hello\u{2019}",
-        r#""hello""#,
-    );
+    ok("\u{2018}hello\u{2019}", r#""hello""#);
 }
 
 #[test]
@@ -126,10 +120,7 @@ fn incomplete_unicode_escape() {
 
 #[test]
 fn missing_comma_between_object_properties() {
-    ok(
-        r#"{"a": 1 "b": 2}"#,
-        r#"{"a":1,"b":2}"#,
-    );
+    ok(r#"{"a": 1 "b": 2}"#, r#"{"a":1,"b":2}"#);
 }
 
 #[test]
@@ -184,26 +175,17 @@ fn missing_value_in_object() {
 
 #[test]
 fn line_comment() {
-    ok(
-        "{\n// comment\n\"a\": 1\n}",
-        r#"{"a":1}"#,
-    );
+    ok("{\n// comment\n\"a\": 1\n}", r#"{"a":1}"#);
 }
 
 #[test]
 fn block_comment() {
-    ok(
-        "{/* comment */\"a\": 1}",
-        r#"{"a":1}"#,
-    );
+    ok("{/* comment */\"a\": 1}", r#"{"a":1}"#);
 }
 
 #[test]
 fn hash_comment() {
-    ok(
-        "{\n# comment\n\"a\": 1\n}",
-        r#"{"a":1}"#,
-    );
+    ok("{\n# comment\n\"a\": 1\n}", r#"{"a":1}"#);
 }
 
 // ── 10. Python keywords ─────────────────────────────────────
@@ -267,10 +249,7 @@ fn truncated_string() {
 
 #[test]
 fn truncated_nested() {
-    ok(
-        r#"{"a": [1, 2, {"b": 3"#,
-        r#"{"a":[1,2,{"b":3}]}"#,
-    );
+    ok(r#"{"a": [1, 2, {"b": 3"#, r#"{"a":[1,2,{"b":3}]}"#);
 }
 
 // ── 13. Markdown code fences ────────────────────────────────
@@ -316,28 +295,19 @@ fn negative_number() {
 
 #[test]
 fn mongodb_object_id() {
-    ok(
-        r#"{"_id": ObjectId("123abc")}"#,
-        r#"{"_id":"123abc"}"#,
-    );
+    ok(r#"{"_id": ObjectId("123abc")}"#, r#"{"_id":"123abc"}"#);
 }
 
 #[test]
 fn mongodb_number_long() {
-    ok(
-        r#"{"count": NumberLong("42")}"#,
-        r#"{"count":"42"}"#,
-    );
+    ok(r#"{"count": NumberLong("42")}"#, r#"{"count":"42"}"#);
 }
 
 // ── 16. JSONP ───────────────────────────────────────────────
 
 #[test]
 fn jsonp_callback() {
-    ok(
-        r#"callback({"a": 1})"#,
-        r#"{"a":1}"#,
-    );
+    ok(r#"callback({"a": 1})"#, r#"{"a":1}"#);
 }
 
 #[test]
@@ -375,10 +345,7 @@ fn non_breaking_space() {
 
 #[test]
 fn ndjson_two_objects() {
-    ok(
-        "{\"a\":1}\n{\"b\":2}",
-        "[\n{\"a\":1},\n{\"b\":2}\n]",
-    );
+    ok("{\"a\":1}\n{\"b\":2}", "[\n{\"a\":1},\n{\"b\":2}\n]");
 }
 
 // ── 21. Error cases ─────────────────────────────────────────

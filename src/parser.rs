@@ -40,8 +40,8 @@ impl JsonRepairer {
         // Handle NDJSON: multiple root values separated by newlines
         if self.pos < self.chars.len() && self.peek() != Some(')') {
             // Could be NDJSON or trailing content
-            let has_newline = self.output.contains('\n')
-                || self.chars[..self.pos].iter().any(|&c| c == '\n');
+            let has_newline =
+                self.output.contains('\n') || self.chars[..self.pos].iter().any(|&c| c == '\n');
 
             if has_newline || self.peek().is_some() {
                 // Try to parse as NDJSON (newline-delimited JSON)
@@ -505,8 +505,7 @@ impl JsonRepairer {
                         '\x0C' => self.output.push_str("\\f"),
                         c if (c as u32) < 0x20 => {
                             // Control character — escape as \u00XX
-                            self.output
-                                .push_str(&format!("\\u{:04x}", c as u32));
+                            self.output.push_str(&format!("\\u{:04x}", c as u32));
                         }
                         _ => self.output.push(c),
                     }
