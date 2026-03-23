@@ -10,21 +10,17 @@
 //! ```
 //! use jsonrepair_rs::jsonrepair;
 //!
-//! // Fix single quotes
+//! // Fix single quotes (whitespace preserved)
 //! let result = jsonrepair("{'name': 'John'}").unwrap();
-//! assert_eq!(result, r#"{"name":"John"}"#);
+//! assert_eq!(result, r#"{"name": "John"}"#);
 //!
 //! // Fix trailing commas
 //! let result = jsonrepair(r#"{"a": 1, "b": 2,}"#).unwrap();
-//! assert_eq!(result, r#"{"a":1,"b":2}"#);
-//!
-//! // Strip markdown fences
-//! let result = jsonrepair("```json\n{\"a\": 1}\n```").unwrap();
-//! assert_eq!(result, r#"{"a":1}"#);
+//! assert_eq!(result, r#"{"a": 1, "b": 2}"#);
 //!
 //! // Convert Python keywords
-//! let result = jsonrepair("{\"flag\": True, \"value\": None}").unwrap();
-//! assert_eq!(result, r#"{"flag":true,"value":null}"#);
+//! let result = jsonrepair(r#"{"flag": True, "value": None}"#).unwrap();
+//! assert_eq!(result, r#"{"flag": true, "value": null}"#);
 //! ```
 
 mod chars;

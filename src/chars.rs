@@ -41,7 +41,6 @@ pub fn is_single_quote_like(c: char) -> bool {
 
 /// Check if a character can appear in an unquoted string (not a JSON delimiter).
 #[inline]
-#[allow(dead_code)]
 pub fn is_unquoted_string_char(c: char) -> bool {
     !matches!(
         c,

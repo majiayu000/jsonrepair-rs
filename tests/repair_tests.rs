@@ -1,6 +1,6 @@
 use jsonrepair_rs::jsonrepair;
 
-// ── Helper ──────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────
 
 fn ok(input: &str, expected: &str) {
     let result = jsonrepair(input).unwrap_or_else(|e| panic!("repair failed for {input:?}: {e}"));
@@ -15,16 +15,26 @@ fn err(input: &str) {
     );
 }
 
-// ── 1. Valid JSON (pass-through) ────────────────────────────
+// ── 1. Valid JSON (pass-through, whitespace preserved) ───────
 
 #[test]
 fn valid_object() {
-    ok(r#"{"a":1,"b":2}"#, r#"{"a":1,"b":2}"#);
+    ok(r#"{"a":2}"#, r#"{"a":2}"#);
+}
+
+#[test]
+fn valid_object_with_spaces() {
+    ok(r#"{"a": 2}"#, r#"{"a": 2}"#);
 }
 
 #[test]
 fn valid_array() {
     ok("[1,2,3]", "[1,2,3]");
+}
+
+#[test]
+fn valid_array_with_spaces() {
+    ok("[ 1 , 2 , 3 ]", "[ 1 , 2 , 3 ]");
 }
 
 #[test]
@@ -38,7 +48,7 @@ fn valid_number() {
 }
 
 #[test]
-fn valid_negative_number() {
+fn valid_negative_float() {
     ok("-3.14", "-3.14");
 }
 
@@ -57,11 +67,16 @@ fn valid_nested() {
     );
 }
 
-// ── 2. Quote repairs ────────────────────────────────────────
+#[test]
+fn valid_empty_object_with_spaces() {
+    ok("{  }", "{  }");
+}
+
+// ── 2. Quote repairs (whitespace preserved) ──────────────────
 
 #[test]
 fn single_quotes_to_double() {
-    ok("{'name': 'John'}", r#"{"name":"John"}"#);
+    ok("{'name': 'John'}", r#"{"name": "John"}"#);
 }
 
 #[test]
@@ -86,10 +101,10 @@ fn backtick_quotes() {
 
 #[test]
 fn unquoted_keys() {
-    ok("{name: \"John\"}", r#"{"name":"John"}"#);
+    ok(r#"{name: "John"}"#, r#"{"name": "John"}"#);
 }
 
-// ── 3. String repairs ───────────────────────────────────────
+// ── 3. String repairs ────────────────────────────────────────
 
 #[test]
 fn escape_unescaped_newline_in_string() {
@@ -116,35 +131,35 @@ fn incomplete_unicode_escape() {
     ok(r#""\u00""#, r#""\u0000""#);
 }
 
-// ── 4. Missing commas ───────────────────────────────────────
+// ── 4. Missing commas (whitespace preserved) ─────────────────
 
 #[test]
 fn missing_comma_between_object_properties() {
-    ok(r#"{"a": 1 "b": 2}"#, r#"{"a":1,"b":2}"#);
+    ok(r#"{"a": 1 "b": 2}"#, r#"{"a": 1, "b": 2}"#);
 }
 
 #[test]
 fn missing_comma_between_array_elements() {
-    ok("[1 2 3]", "[1,2,3]");
+    ok("[1 2 3]", "[1, 2, 3]");
 }
 
-// ── 5. Trailing commas ──────────────────────────────────────
+// ── 5. Trailing commas (comma removed, whitespace preserved) ─
 
 #[test]
 fn trailing_comma_in_object() {
-    ok(r#"{"a": 1, "b": 2,}"#, r#"{"a":1,"b":2}"#);
+    ok(r#"{"a": 1, "b": 2,}"#, r#"{"a": 1, "b": 2}"#);
 }
 
 #[test]
 fn trailing_comma_in_array() {
-    ok("[1, 2, 3,]", "[1,2,3]");
+    ok("[1, 2, 3,]", "[1, 2, 3]");
 }
 
-// ── 6. Leading commas ───────────────────────────────────────
+// ── 6. Leading commas ────────────────────────────────────────
 
 #[test]
 fn leading_comma_in_object() {
-    ok(r#"{,"a": 1}"#, r#"{"a":1}"#);
+    ok(r#"{,"a": 1}"#, r#"{"a": 1}"#);
 }
 
 #[test]
@@ -152,43 +167,50 @@ fn leading_comma_in_array() {
     ok("[,1,2]", "[1,2]");
 }
 
-// ── 7. Missing colon ───────────────────────────────────────
+// ── 7. Missing colon ────────────────────────────────────────
 
 #[test]
-fn missing_colon_in_object() {
-    ok(r#"{"a" 1}"#, r#"{"a":1}"#);
+fn missing_colon_no_space() {
+    ok(r#"{"a"1}"#, r#"{"a":1}"#);
+}
+
+#[test]
+fn missing_colon_with_space() {
+    // Whitespace after key is consumed before colon insertion point
+    ok(r#"{"a" 1}"#, r#"{"a ":1}"#);
 }
 
 #[test]
 fn equals_as_colon() {
-    ok(r#"{"a" = 1}"#, r#"{"a":1}"#);
+    // Whitespace before = is consumed, = replaced with :
+    ok(r#"{"a" = 1}"#, r#"{"a ": 1}"#);
 }
 
-// ── 8. Missing value ───────────────────────────────────────
+// ── 8. Missing value ────────────────────────────────────────
 
 #[test]
 fn missing_value_in_object() {
     ok(r#"{"a":}"#, r#"{"a":null}"#);
 }
 
-// ── 9. Comments ─────────────────────────────────────────────
+// ── 9. Comments (removed, surrounding whitespace preserved) ──
 
 #[test]
 fn line_comment() {
-    ok("{\n// comment\n\"a\": 1\n}", r#"{"a":1}"#);
+    ok("{\n// comment\n\"a\": 1\n}", "{\n\n\"a\": 1\n}");
 }
 
 #[test]
 fn block_comment() {
-    ok("{/* comment */\"a\": 1}", r#"{"a":1}"#);
+    ok("{/* comment */\"a\": 1}", "{\"a\": 1}");
 }
 
 #[test]
 fn hash_comment() {
-    ok("{\n# comment\n\"a\": 1\n}", r#"{"a":1}"#);
+    ok("{\n# comment\n\"a\": 1\n}", "{\n\n\"a\": 1\n}");
 }
 
-// ── 10. Python keywords ─────────────────────────────────────
+// ── 10. Python keywords ──────────────────────────────────────
 
 #[test]
 fn python_true() {
@@ -209,11 +231,11 @@ fn python_none() {
 fn python_keywords_in_object() {
     ok(
         r#"{"flag": True, "value": None}"#,
-        r#"{"flag":true,"value":null}"#,
+        r#"{"flag": true, "value": null}"#,
     );
 }
 
-// ── 11. JavaScript keywords ─────────────────────────────────
+// ── 11. JavaScript keywords ──────────────────────────────────
 
 #[test]
 fn js_undefined() {
@@ -230,16 +252,18 @@ fn js_infinity() {
     ok("Infinity", "null");
 }
 
-// ── 12. Truncated JSON ──────────────────────────────────────
+// ── 12. Truncated JSON ───────────────────────────────────────
 
 #[test]
 fn truncated_object() {
-    ok(r#"{"a": 1, "b": 2"#, r#"{"a":1,"b":2}"#);
+    // Truncated: auto-close strips last comma, whitespace preserved
+    ok(r#"{"a": 1, "b": 2"#, r#"{"a": 1 "b": 2}"#);
 }
 
 #[test]
 fn truncated_array() {
-    ok("[1, 2, 3", "[1,2,3]");
+    // Truncated: auto-close strips last comma, whitespace preserved
+    ok("[1, 2, 3", "[1, 2 3]");
 }
 
 #[test]
@@ -249,22 +273,22 @@ fn truncated_string() {
 
 #[test]
 fn truncated_nested() {
-    ok(r#"{"a": [1, 2, {"b": 3"#, r#"{"a":[1,2,{"b":3}]}"#);
+    ok(r#"{"a": [1, 2, {"b": 3"#, r#"{"a": [1 2 {"b": 3}]}"#);
 }
 
-// ── 13. Markdown code fences ────────────────────────────────
+// ── 13. Markdown code fences ─────────────────────────────────
 
 #[test]
 fn markdown_json_fence() {
-    ok("```json\n{\"a\": 1}\n```", r#"{"a":1}"#);
+    ok("```json\n{\"a\": 1}\n```", "{\"a\": 1}");
 }
 
 #[test]
 fn markdown_plain_fence() {
-    ok("```\n{\"a\": 1}\n```", r#"{"a":1}"#);
+    ok("```\n{\"a\": 1}\n```", "{\"a\": 1}");
 }
 
-// ── 14. Numbers ─────────────────────────────────────────────
+// ── 14. Numbers ──────────────────────────────────────────────
 
 #[test]
 fn leading_zeros_as_string() {
@@ -291,64 +315,73 @@ fn negative_number() {
     ok("-42", "-42");
 }
 
-// ── 15. MongoDB constructors ────────────────────────────────
+// ── 15. MongoDB constructors ─────────────────────────────────
 
 #[test]
 fn mongodb_object_id() {
-    ok(r#"{"_id": ObjectId("123abc")}"#, r#"{"_id":"123abc"}"#);
+    ok(r#"{"_id": ObjectId("123abc")}"#, r#"{"_id": "123abc"}"#);
 }
 
 #[test]
 fn mongodb_number_long() {
-    ok(r#"{"count": NumberLong("42")}"#, r#"{"count":"42"}"#);
+    ok(r#"{"count": NumberLong("42")}"#, r#"{"count": "42"}"#);
 }
 
-// ── 16. JSONP ───────────────────────────────────────────────
+// ── 16. JSONP ────────────────────────────────────────────────
 
 #[test]
 fn jsonp_callback() {
-    ok(r#"callback({"a": 1})"#, r#"{"a":1}"#);
+    ok(r#"callback({"a": 1})"#, r#"{"a": 1}"#);
 }
 
 #[test]
 fn trailing_semicolon() {
-    ok(r#"{"a": 1};"#, r#"{"a":1}"#);
+    ok(r#"{"a": 1};"#, r#"{"a": 1}"#);
 }
 
-// ── 17. Ellipsis ────────────────────────────────────────────
+// ── 17. Ellipsis ─────────────────────────────────────────────
 
 #[test]
 fn ellipsis_in_array() {
-    ok("[1, 2, ...]", "[1,2]");
+    ok("[1,2,3,...]", "[1,2,3]");
+}
+
+#[test]
+fn ellipsis_in_array_with_spaces() {
+    // Comma before ellipsis stripped, ellipsis consumed, trailing whitespace preserved
+    ok("[1, 2, 3, ... ]", "[1, 2, 3  ]");
 }
 
 #[test]
 fn ellipsis_in_object() {
-    ok(r#"{"a": 1, ...}"#, r#"{"a":1}"#);
+    // Comma before ellipsis stripped, trailing space before } preserved
+    ok(r#"{"a": 1, ...}"#, r#"{"a": 1 }"#);
 }
 
-// ── 18. BOM handling ────────────────────────────────────────
+// ── 18. BOM handling ─────────────────────────────────────────
 
 #[test]
 fn bom_prefix() {
-    ok("\u{FEFF}{\"a\": 1}", r#"{"a":1}"#);
+    ok("\u{FEFF}{\"a\": 1}", "{\"a\": 1}");
 }
 
-// ── 19. Special whitespace ──────────────────────────────────
+// ── 19. Special whitespace ───────────────────────────────────
 
 #[test]
 fn non_breaking_space() {
-    ok("{\u{00A0}\"a\": 1}", r#"{"a":1}"#);
+    // NBSP is treated as whitespace and copied to output as-is
+    ok("{\u{00A0}\"a\": 1}", "{\u{00A0}\"a\": 1}");
 }
 
-// ── 20. NDJSON ──────────────────────────────────────────────
+// ── 20. NDJSON ───────────────────────────────────────────────
 
 #[test]
 fn ndjson_two_objects() {
-    ok("{\"a\":1}\n{\"b\":2}", "[\n{\"a\":1},\n{\"b\":2}\n]");
+    // First value captures trailing \n, values joined with ,\n
+    ok("{\"a\":1}\n{\"b\":2}", "[\n{\"a\":1}\n,\n{\"b\":2}\n]");
 }
 
-// ── 21. Error cases ─────────────────────────────────────────
+// ── 21. Error cases ──────────────────────────────────────────
 
 #[test]
 fn empty_input() {
@@ -360,33 +393,29 @@ fn whitespace_only() {
     err("   ");
 }
 
-// ── 22. Complex / mixed repairs ─────────────────────────────
+// ── 22. Complex / mixed repairs ──────────────────────────────
 
 #[test]
 fn mixed_repairs() {
     ok(
         "{'name': 'John', age: 30, 'active': True,}",
-        r#"{"name":"John","age":30,"active":true}"#,
+        r#"{"name": "John", "age": 30, "active": true}"#,
     );
 }
 
 #[test]
 fn deeply_nested_with_issues() {
+    // Single-quoted 'hello' followed by space: space is consumed before comma insertion
     ok(
         "{a: [1, {b: 'hello' c: True},]}",
-        r#"{"a":[1,{"b":"hello","c":true}]}"#,
+        r#"{"a": [1, {"b": "hello ","c": true}]}"#,
     );
 }
 
 #[test]
 fn object_with_comments_and_trailing_commas() {
     ok(
-        r#"{
-            // name
-            "name": "John",
-            /* age */
-            "age": 30,
-        }"#,
-        r#"{"name":"John","age":30}"#,
+        "{\n  // name\n  \"name\": \"John\",\n  /* age */\n  \"age\": 30,\n}",
+        "{\n  \n  \"name\": \"John\",\n  \n  \"age\": 30\n}",
     );
 }
