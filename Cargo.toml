@@ -1,0 +1,21 @@
+[package]
+name = "jsonrepair-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Repair broken JSON — fix quotes, commas, comments, trailing content, and 30+ other issues"
+license = "MIT"
+repository = "https://github.com/majiayu000/jsonrepair-rs"
+keywords = ["json", "repair", "fix", "parser", "llm"]
+categories = ["parser-implementations", "encoding"]
+rust-version = "1.70"
+
+[dependencies]
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+
+[features]
+default = []
+serde = ["dep:serde", "dep:serde_json"]
+
+[dev-dependencies]
+serde_json = "1"
