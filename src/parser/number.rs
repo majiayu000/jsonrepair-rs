@@ -7,117 +7,88 @@ impl JsonRepairer {
     pub(super) fn parse_number(&mut self) -> Result<bool> {
         let start = self.pos;
 
-        // Optional minus
         if self.peek() == Some('-') {
+            self.pos += 1;
+            if self.at_end_of_number() {
+                self.repair_number_ending_with_numeric_symbol(start);
+                return Ok(true);
+            }
+            if !self.peek().is_some_and(chars::is_digit) {
+                self.pos = start;
+                return Ok(false);
+            }
+        }
+
+        while self.peek().is_some_and(chars::is_digit) {
             self.pos += 1;
         }
 
-        // Integer part
-        if self.peek() == Some('0') {
+        if self.peek() == Some('.') {
             self.pos += 1;
-            if self.peek().is_some_and(chars::is_digit) {
-                // Leading zeros: 0789 → "0789"
-                return self.parse_leading_zero_number(start);
+            if self.at_end_of_number() {
+                self.repair_number_ending_with_numeric_symbol(start);
+                return Ok(true);
             }
-        } else if self.peek().is_some_and(chars::is_digit) {
+            if !self.peek().is_some_and(chars::is_digit) {
+                self.pos = start;
+                return Ok(false);
+            }
             while self.peek().is_some_and(chars::is_digit) {
                 self.pos += 1;
             }
-        } else {
-            // Just a minus, or nothing — handle truncated minus
-            if self.pos > start {
-                // bare `-` → `-0`
-                let s: String = self.chars[start..self.pos].iter().collect();
-                self.output.push_str(&s);
-                self.output.push('0');
-                return Ok(true);
-            }
-            return Ok(false);
         }
 
-        // Decimal part
-        if self.peek() == Some('.') {
-            self.pos += 1;
-            if self.peek().is_some_and(chars::is_digit) {
-                while self.peek().is_some_and(chars::is_digit) {
-                    self.pos += 1;
-                }
-                if self.peek() == Some('.') {
-                    return self.parse_multi_decimal(start);
-                }
-            } else {
-                // Trailing dot: 2. → 2.0
-                let mut s: String = self.chars[start..self.pos].iter().collect();
-                s.push('0');
-                self.output.push_str(&s);
-                return Ok(true);
-            }
-        }
-
-        // Exponent part
         if self.peek().is_some_and(|c| c == 'e' || c == 'E') {
             self.pos += 1;
-            if self.peek().is_some_and(|c| c == '+' || c == '-') {
+            if self.peek().is_some_and(|c| c == '-' || c == '+') {
                 self.pos += 1;
             }
-            if self.peek().is_some_and(chars::is_digit) {
-                while self.peek().is_some_and(chars::is_digit) {
-                    self.pos += 1;
-                }
-            } else {
-                // Truncated exponent: 2e → 2e0
-                if self.peek() == Some('.') {
-                    return self.parse_invalid_exp_decimal(start);
-                }
-                let mut s: String = self.chars[start..self.pos].iter().collect();
-                s.push('0');
-                self.output.push_str(&s);
+            if self.at_end_of_number() {
+                self.repair_number_ending_with_numeric_symbol(start);
                 return Ok(true);
+            }
+            if !self.peek().is_some_and(chars::is_digit) {
+                self.pos = start;
+                return Ok(false);
+            }
+            while self.peek().is_some_and(chars::is_digit) {
+                self.pos += 1;
             }
         }
 
-        if self.pos == start {
+        // If number is followed by non-delimiter text, let unquoted string parser handle it.
+        if !self.at_end_of_number() {
+            self.pos = start;
             return Ok(false);
         }
 
-        let s: String = self.chars[start..self.pos].iter().collect();
-        self.output.push_str(&s);
-        Ok(true)
+        if self.pos > start {
+            let num: String = self.chars[start..self.pos].iter().collect();
+            let has_invalid_leading_zero =
+                num.starts_with('0') && num.chars().nth(1).is_some_and(|c| c.is_ascii_digit());
+            if has_invalid_leading_zero {
+                self.output.push('"');
+                self.output.push_str(&num);
+                self.output.push('"');
+            } else {
+                self.output.push_str(&num);
+            }
+            return Ok(true);
+        }
+
+        Ok(false)
     }
 
-    fn parse_leading_zero_number(&mut self, start: usize) -> Result<bool> {
-        while self
-            .peek()
-            .is_some_and(|c| chars::is_digit(c) || c == '.' || c == 'e' || c == 'E')
-        {
-            self.pos += 1;
+    fn at_end_of_number(&self) -> bool {
+        match self.peek() {
+            None => true,
+            Some(c) => chars::is_delimiter(c) || chars::is_whitespace(c),
         }
-        let s: String = self.chars[start..self.pos].iter().collect();
-        self.output.push('"');
-        self.output.push_str(&s);
-        self.output.push('"');
-        Ok(true)
     }
 
-    fn parse_multi_decimal(&mut self, start: usize) -> Result<bool> {
-        while self.peek().is_some_and(|c| chars::is_digit(c) || c == '.') {
-            self.pos += 1;
-        }
-        let s: String = self.chars[start..self.pos].iter().collect();
-        self.output.push('"');
+    fn repair_number_ending_with_numeric_symbol(&mut self, start: usize) {
+        let mut s: String = self.chars[start..self.pos].iter().collect();
+        s.push('0');
         self.output.push_str(&s);
-        self.output.push('"');
-        Ok(true)
-    }
-
-    fn parse_invalid_exp_decimal(&mut self, start: usize) -> Result<bool> {
-        while self.peek().is_some_and(|c| chars::is_digit(c) || c == '.') {
-            self.pos += 1;
-        }
-        let s: String = self.chars[start..self.pos].iter().collect();
-        self.output.push('"');
-        self.output.push_str(&s);
-        self.output.push('"');
-        Ok(true)
     }
 }

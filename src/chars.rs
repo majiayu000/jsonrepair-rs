@@ -1,4 +1,4 @@
-/// Character classification utilities for JSON repair parsing.
+//! Character classification utilities for JSON repair parsing.
 
 /// Check if a character is a JSON digit (0-9).
 #[inline]
@@ -33,20 +33,85 @@ pub fn is_double_quote_like(c: char) -> bool {
     matches!(c, '"' | '\u{201C}' | '\u{201D}')
 }
 
+/// Check if a character is a plain double quote.
+#[inline]
+pub fn is_double_quote(c: char) -> bool {
+    c == '"'
+}
+
 /// Check if a character is a single-quote-like character (regular, curly, or backtick).
 #[inline]
 pub fn is_single_quote_like(c: char) -> bool {
     matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{0060}' | '\u{00B4}')
 }
 
-/// Check if a character can appear in an unquoted string (not a JSON delimiter).
+/// Check if a character is a plain single quote.
 #[inline]
-pub fn is_unquoted_string_char(c: char) -> bool {
-    !matches!(
+pub fn is_single_quote(c: char) -> bool {
+    c == '\''
+}
+
+/// Check if a character ends an unquoted string.
+#[inline]
+pub fn is_unquoted_string_delimiter(c: char) -> bool {
+    matches!(c, ',' | '[' | ']' | '/' | '{' | '}' | '\n' | '+')
+}
+
+/// Check if a character is a generic JSON delimiter.
+#[inline]
+pub fn is_delimiter(c: char) -> bool {
+    matches!(
         c,
-        '{' | '}' | '[' | ']' | ',' | ':' | '"' | '\'' | '(' | ')' | ';'
-    ) && !c.is_ascii_whitespace()
-        && !is_special_whitespace(c)
+        ',' | ':' | '[' | ']' | '/' | '{' | '}' | '(' | ')' | '\n' | '+'
+    )
+}
+
+/// Check whether a character can start a JSON value.
+#[inline]
+pub fn is_start_of_value(c: char) -> bool {
+    is_quote(c) || matches!(c, '[' | '{' | '-' | '_') || c.is_ascii_alphanumeric()
+}
+
+/// Characters that can occur in a URL.
+#[inline]
+pub fn is_url_char(c: char) -> bool {
+    c.is_ascii_alphanumeric()
+        || matches!(
+            c,
+            '-' | '.'
+                | '_'
+                | '~'
+                | ':'
+                | '/'
+                | '?'
+                | '#'
+                | '@'
+                | '!'
+                | '$'
+                | '&'
+                | '\''
+                | '('
+                | ')'
+                | '*'
+                | '+'
+                | ';'
+                | '='
+        )
+}
+
+/// Test whether `s` is a supported URL scheme prefix ending in `://`.
+#[inline]
+pub fn is_url_scheme(s: &str) -> bool {
+    matches!(
+        s,
+        "http://" | "https://" | "ftp://" | "mailto://" | "file://" | "data://" | "irc://"
+    )
+}
+
+/// Check if a string character is valid in JSON (must be >= U+0020).
+#[inline]
+pub fn is_valid_string_character(c: char) -> bool {
+    c >= '\u{0020}'
 }
 
 /// Check if a character is a "special" (non-ASCII) whitespace.
@@ -55,6 +120,7 @@ pub fn is_special_whitespace(c: char) -> bool {
     matches!(
         c,
         '\u{00A0}'  // non-breaking space
+        | '\u{180E}' // mongolian vowel separator
         | '\u{2000}' // en quad
         | '\u{2001}' // em quad
         | '\u{2002}' // en space
@@ -66,6 +132,7 @@ pub fn is_special_whitespace(c: char) -> bool {
         | '\u{2008}' // punctuation space
         | '\u{2009}' // thin space
         | '\u{200A}' // hair space
+        | '\u{200B}' // zero-width space
         | '\u{202F}' // narrow no-break space
         | '\u{205F}' // medium mathematical space
         | '\u{3000}' // ideographic space
@@ -77,6 +144,12 @@ pub fn is_special_whitespace(c: char) -> bool {
 #[inline]
 pub fn is_whitespace(c: char) -> bool {
     c.is_ascii_whitespace() || is_special_whitespace(c)
+}
+
+/// Check if a character is whitespace except a newline.
+#[inline]
+pub fn is_whitespace_except_newline(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '\r') || is_special_whitespace(c)
 }
 
 /// Check if a character is a valid start of an unquoted string

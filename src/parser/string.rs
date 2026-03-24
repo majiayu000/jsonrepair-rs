@@ -6,130 +6,359 @@ use super::Result;
 impl JsonRepairer {
     /// Parse a string value. If `is_key` is true, context is an object key.
     pub(super) fn parse_string(&mut self, _is_key: bool) -> Result<bool> {
+        self.parse_string_internal(false, None)
+    }
+
+    fn parse_string_internal(
+        &mut self,
+        stop_at_delimiter: bool,
+        stop_at_index: Option<usize>,
+    ) -> Result<bool> {
+        let skip_escape_chars = self.peek() == Some('\\');
+        if skip_escape_chars {
+            // repair escaped string start: \"foo\"
+            self.pos += 1;
+        }
+
         let quote = match self.peek() {
             Some(c) if chars::is_quote(c) => c,
             _ => return Ok(false),
         };
-        self.pos += 1;
-        let is_double = chars::is_double_quote_like(quote);
-        let close_fn: fn(char) -> bool = if is_double {
-            chars::is_double_quote_like
-        } else {
+        let is_end_quote: fn(char) -> bool = if chars::is_double_quote(quote) {
+            chars::is_double_quote
+        } else if chars::is_single_quote(quote) {
+            chars::is_single_quote
+        } else if chars::is_single_quote_like(quote) {
             chars::is_single_quote_like
-        };
-        self.output.push('"');
-        self.parse_string_body(close_fn)?;
-        Ok(true)
-    }
-
-    fn parse_string_body(&mut self, close_fn: fn(char) -> bool) -> Result<()> {
-        loop {
-            match self.peek() {
-                None => {
-                    self.output.push('"');
-                    return Ok(());
-                }
-                Some(c) if close_fn(c) => {
-                    self.pos += 1;
-                    if self.try_string_concat(close_fn) {
-                        continue;
-                    }
-                    self.output.push('"');
-                    return Ok(());
-                }
-                Some('\\') => self.parse_escape()?,
-                Some(c) => {
-                    self.pos += 1;
-                    self.push_string_char(c);
-                }
-            }
-        }
-    }
-
-    fn try_string_concat(&mut self, close_fn: fn(char) -> bool) -> bool {
-        let ws_start = self.output.len();
-        self.parse_whitespace_and_comments();
-        if self.peek() == Some('+') {
-            let save_pos = self.pos;
-            self.pos += 1;
-            self.parse_whitespace_and_comments();
-            if self.peek().is_some_and(|c| chars::is_quote(c)) {
-                let nq = self.chars[self.pos];
-                self.pos += 1;
-                // Remove whitespace that was added between strings
-                self.output.truncate(ws_start);
-                let _ = close_fn; // next segment uses same close logic
-                let nd = chars::is_double_quote_like(nq);
-                let _ncf: fn(char) -> bool = if nd {
-                    chars::is_double_quote_like
-                } else {
-                    chars::is_single_quote_like
-                };
-                return true;
-            }
-            // Not a concat — restore
-            self.output.truncate(ws_start);
-            self.pos = save_pos;
         } else {
-            // Not a + — restore whitespace position tracking
-            // The whitespace is fine to keep (it's after the string)
+            chars::is_double_quote_like
+        };
+
+        let input_start = self.pos;
+        let output_start = self.output.len();
+        let mut current = String::from("\"");
+        self.pos += 1;
+
+        loop {
+            if self.at_end() {
+                if !stop_at_delimiter
+                    && self
+                        .pos
+                        .checked_sub(1)
+                        .and_then(|idx| self.prev_non_whitespace_index(idx))
+                        .is_some_and(|idx| chars::is_delimiter(self.chars[idx]))
+                {
+                    // Retry in conservative mode when we ended after a delimiter.
+                    self.pos = input_start;
+                    self.output.truncate(output_start);
+                    return self.parse_string_internal(true, None);
+                }
+
+                self.insert_before_last_whitespace_in_string(&mut current, "\"");
+                self.output.push_str(&current);
+                return Ok(true);
+            }
+
+            if stop_at_index.is_some_and(|idx| self.pos == idx) {
+                self.insert_before_last_whitespace_in_string(&mut current, "\"");
+                self.output.push_str(&current);
+                return Ok(true);
+            }
+
+            let c = self.chars[self.pos];
+            if is_end_quote(c) {
+                let quote_pos = self.pos;
+                let quote_out_len = current.len();
+                current.push('"');
+                self.pos += 1;
+                self.output.push_str(&current);
+
+                self.parse_whitespace_and_comments_with_newline(false);
+                let next = self.peek();
+                if stop_at_delimiter
+                    || next.is_none()
+                    || next.is_some_and(|ch| {
+                        chars::is_delimiter(ch) || chars::is_quote(ch) || chars::is_digit(ch)
+                    })
+                {
+                    self.parse_concatenated_string()?;
+                    return Ok(true);
+                }
+
+                let prev_non_ws = quote_pos
+                    .checked_sub(1)
+                    .and_then(|idx| self.prev_non_whitespace_index(idx));
+                let prev_char = prev_non_ws.and_then(|idx| self.peek_at(idx));
+
+                if prev_char == Some(',') {
+                    // {"a":"b,c,"d":"e"} -> stop at comma before quote.
+                    self.pos = input_start;
+                    self.output.truncate(output_start);
+                    return self.parse_string_internal(false, prev_non_ws);
+                }
+
+                if prev_char.is_some_and(chars::is_delimiter) {
+                    // End quote likely missing earlier.
+                    self.pos = input_start;
+                    self.output.truncate(output_start);
+                    return self.parse_string_internal(true, None);
+                }
+
+                // Not a real closing quote: continue, escaping this quote.
+                self.output.truncate(output_start);
+                self.pos = quote_pos + 1;
+                let mut escaped = String::with_capacity(current.len() + 1);
+                escaped.push_str(&current[..quote_out_len]);
+                escaped.push('\\');
+                escaped.push_str(&current[quote_out_len..]);
+                current = escaped;
+            } else if stop_at_delimiter && chars::is_unquoted_string_delimiter(c) {
+                // URL like "https://..." should not stop at '/'.
+                if self.pos > input_start + 1
+                    && self.peek_at(self.pos.saturating_sub(1)) == Some(':')
+                    && self.looks_like_url_start(input_start + 1, self.pos)
+                {
+                    while self.peek().is_some_and(chars::is_url_char) {
+                        current.push(self.chars[self.pos]);
+                        self.pos += 1;
+                    }
+                }
+
+                self.insert_before_last_whitespace_in_string(&mut current, "\"");
+                self.output.push_str(&current);
+                self.parse_concatenated_string()?;
+                return Ok(true);
+            } else if c == '\\' {
+                self.parse_string_escape(&mut current)?;
+            } else {
+                self.parse_string_char(&mut current, c)?;
+            }
+
+            if skip_escape_chars {
+                // Repair escaped outer string wrappers: consume \ before a quote.
+                if self.peek() == Some('\\') {
+                    self.pos += 1;
+                }
+            }
         }
-        false
     }
 
-    fn parse_escape(&mut self) -> Result<()> {
-        self.pos += 1; // skip backslash
-        match self.peek() {
+    fn parse_string_escape(&mut self, out: &mut String) -> Result<()> {
+        let backslash_pos = self.pos;
+        self.pos += 1; // skip '\'
+        let esc = match self.peek() {
+            Some(c) => c,
             None => {
-                self.output.push('"');
+                return Ok(());
             }
-            Some(esc) => {
+        };
+
+        match esc {
+            '"' | '\\' | '/' => {
+                out.push('\\');
+                out.push(esc);
                 self.pos += 1;
-                match esc {
-                    '"' | '\\' | '/' => {
-                        self.output.push('\\');
-                        self.output.push(esc);
-                    }
-                    'n' => self.output.push_str("\\n"),
-                    'r' => self.output.push_str("\\r"),
-                    't' => self.output.push_str("\\t"),
-                    'b' => self.output.push_str("\\b"),
-                    'f' => self.output.push_str("\\f"),
-                    'u' => self.parse_unicode_escape(),
-                    '\'' => self.output.push('\''),
-                    '\n' | '\r' => { /* line continuation — skip */ }
-                    _ => self.output.push(esc),
+            }
+            'b' | 'f' | 'n' | 'r' | 't' => {
+                out.push('\\');
+                out.push(esc);
+                self.pos += 1;
+            }
+            'u' => {
+                let mut digits = 0;
+                while digits < 4
+                    && self
+                        .peek_at(self.pos + 1 + digits)
+                        .is_some_and(chars::is_hex)
+                {
+                    digits += 1;
                 }
+
+                if digits == 4 {
+                    out.push_str("\\u");
+                    for i in 0..4 {
+                        out.push(self.chars[self.pos + 1 + i]);
+                    }
+                    self.pos += 5; // 'u' + 4 hex digits
+                } else if self.pos + 1 + digits >= self.chars.len() {
+                    // Truncated unicode at end: end string here.
+                    self.pos = self.chars.len();
+                } else {
+                    let end = (backslash_pos + 6).min(self.chars.len());
+                    let snippet: String = self.chars[backslash_pos..end].iter().collect();
+                    return Err(crate::error::JsonRepairError::new(
+                        format!("Invalid unicode character \"{snippet}\""),
+                        backslash_pos,
+                    ));
+                }
+            }
+            '\'' => {
+                // Keep a raw apostrophe when escaping single quote.
+                out.push('\'');
+                self.pos += 1;
+            }
+            '\n' | '\r' => {
+                // Line continuation: drop it.
+                self.pos += 1;
+            }
+            _ => {
+                // Invalid escape: drop '\' and keep char.
+                out.push(esc);
+                self.pos += 1;
             }
         }
         Ok(())
     }
 
-    fn parse_unicode_escape(&mut self) {
-        self.output.push_str("\\u");
-        let mut count = 0;
-        while count < 4 {
-            if let Some(h) = self.peek() {
-                if chars::is_hex(h) {
-                    self.output.push(h);
-                    self.pos += 1;
-                    count += 1;
-                } else {
-                    break;
+    fn parse_string_char(&mut self, out: &mut String, c: char) -> Result<()> {
+        if c == '"' {
+            out.push_str("\\\"");
+            self.pos += 1;
+            return Ok(());
+        }
+
+        match c {
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\x08' => out.push_str("\\b"),
+            '\x0C' => out.push_str("\\f"),
+            _ => {
+                if !chars::is_valid_string_character(c) {
+                    return Err(self.error(&format!("Invalid character {:?}", c)));
                 }
-            } else {
-                break;
+                out.push(c);
             }
         }
-        while count < 4 {
-            self.output.push('0');
-            count += 1;
+
+        self.pos += 1;
+        Ok(())
+    }
+
+    fn parse_concatenated_string(&mut self) -> Result<bool> {
+        let mut processed = false;
+
+        self.parse_whitespace_and_comments();
+        while self.peek() == Some('+') {
+            processed = true;
+            self.pos += 1;
+            self.parse_whitespace_and_comments();
+
+            // Remove end quote and any trailing whitespace/comments after it.
+            if let Some(idx) = self.output.rfind('"') {
+                self.output.truncate(idx);
+            }
+            let second_start = self.output.len();
+            if self.parse_string(false)? {
+                // Remove start quote from second string.
+                if second_start < self.output.len() {
+                    self.output.remove(second_start);
+                }
+            } else {
+                // '+' not followed by a string.
+                self.insert_before_last_whitespace("\"");
+            }
         }
+
+        Ok(processed)
+    }
+
+    /// Parse unquoted string values and function-call wrappers (MongoDB/JSONP).
+    pub(super) fn parse_unquoted_string(&mut self, is_key: bool) -> Result<bool> {
+        let start = self.pos;
+
+        if self.peek().is_some_and(chars::is_identifier_start) {
+            while self.peek().is_some_and(chars::is_identifier_char) {
+                self.pos += 1;
+            }
+
+            let mut j = self.pos;
+            while self.peek_at(j).is_some_and(chars::is_whitespace) {
+                j += 1;
+            }
+            if self.peek_at(j) == Some('(') {
+                // MongoDB and JSONP style wrapper function.
+                self.pos = j + 1;
+                let _ = self.parse_value()?;
+                if self.peek() == Some(')') {
+                    self.pos += 1;
+                    if self.peek() == Some(';') {
+                        self.pos += 1;
+                    }
+                }
+                return Ok(true);
+            }
+        }
+
+        while let Some(c) = self.peek() {
+            if chars::is_unquoted_string_delimiter(c) || chars::is_quote(c) || (is_key && c == ':')
+            {
+                break;
+            }
+            self.pos += 1;
+        }
+
+        if self.pos > start
+            && self.peek_at(self.pos.saturating_sub(1)) == Some(':')
+            && self.looks_like_url_start(start, self.pos)
+        {
+            while self.peek().is_some_and(chars::is_url_char) {
+                self.pos += 1;
+            }
+        }
+
+        if self.pos == start {
+            return Ok(false);
+        }
+
+        while self.pos > start && chars::is_whitespace(self.chars[self.pos - 1]) {
+            self.pos -= 1;
+        }
+
+        let symbol: String = self.chars[start..self.pos].iter().collect();
+        if symbol == "undefined" {
+            self.output.push_str("null");
+        } else {
+            self.output.push('"');
+            for c in symbol.chars() {
+                self.push_string_char(c);
+            }
+            self.output.push('"');
+        }
+
+        if self.peek().is_some_and(chars::is_quote) {
+            // Missing start quote: consume dangling end quote.
+            self.pos += 1;
+        }
+
+        Ok(true)
+    }
+
+    fn looks_like_url_start(&self, start: usize, slash_idx: usize) -> bool {
+        if self.peek_at(slash_idx) != Some('/') || self.peek_at(slash_idx + 1) != Some('/') {
+            return false;
+        }
+        if slash_idx + 2 > self.chars.len() || start >= slash_idx + 2 {
+            return false;
+        }
+
+        let prefix: String = self.chars[start..slash_idx + 2].iter().collect();
+        chars::is_url_scheme(&prefix)
+    }
+
+    fn insert_before_last_whitespace_in_string(&self, s: &mut String, text: &str) {
+        let bytes = s.as_bytes();
+        let mut idx = bytes.len();
+        while idx > 0 && matches!(bytes[idx - 1], b' ' | b'\n' | b'\r' | b'\t') {
+            idx -= 1;
+        }
+        s.insert_str(idx, text);
     }
 
     fn push_string_char(&mut self, c: char) {
         match c {
             '"' => self.output.push_str("\\\""),
+            '\\' => self.output.push_str("\\\\"),
             '\n' => self.output.push_str("\\n"),
             '\r' => self.output.push_str("\\r"),
             '\t' => self.output.push_str("\\t"),
@@ -140,56 +369,5 @@ impl JsonRepairer {
             }
             _ => self.output.push(c),
         }
-    }
-
-    /// Parse an unquoted key (identifier style: alphanumeric, _, $, -).
-    pub(super) fn parse_unquoted_key(&mut self) -> Result<bool> {
-        let start = self.pos;
-        while let Some(c) = self.peek() {
-            if chars::is_identifier_char(c) || c == '-' {
-                self.pos += 1;
-            } else {
-                break;
-            }
-        }
-        // Also accept digits as keys
-        if self.pos == start {
-            while self.peek().is_some_and(|c| c.is_ascii_digit()) {
-                self.pos += 1;
-            }
-        }
-        if self.pos == start {
-            return Ok(false);
-        }
-        let key: String = self.chars[start..self.pos].iter().collect();
-        self.output.push('"');
-        self.output.push_str(&key);
-        self.output.push('"');
-        Ok(true)
-    }
-
-    /// Parse unquoted string value (multi-word, until delimiter).
-    #[allow(dead_code)] // Used when full JS test suite is ported
-    pub(super) fn parse_unquoted_string(&mut self) -> Result<bool> {
-        let start = self.pos;
-        while let Some(c) = self.peek() {
-            if chars::is_unquoted_string_char(c) {
-                self.pos += 1;
-            } else {
-                break;
-            }
-        }
-        if self.pos == start {
-            return Ok(false);
-        }
-        let s: String = self.chars[start..self.pos].iter().collect();
-        let trimmed = s.trim_end();
-        // Put back trailing whitespace
-        let ws_len = s.len() - trimmed.len();
-        self.pos -= ws_len;
-        self.output.push('"');
-        self.output.push_str(trimmed);
-        self.output.push('"');
-        Ok(true)
     }
 }

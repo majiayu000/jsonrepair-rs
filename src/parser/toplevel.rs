@@ -1,86 +1,80 @@
+use crate::chars;
+
 use super::JsonRepairer;
 use super::Result;
 
 impl JsonRepairer {
     pub fn repair(mut self) -> Result<String> {
+        self.parse_markdown_wrapped_open();
+
         let processed = self.parse_value()?;
-        let processed_comma = self.parse_char(',');
-        self.parse_whitespace_and_comments();
-
-        if processed_comma {
-            self.strip_last_occurrence(',');
-        }
-
-        if self.is_jsonp_close() {
-            self.pos += 1; // skip )
-            self.parse_whitespace_and_comments();
-        }
-
-        if processed {
-            self.skip_semicolons();
-            self.parse_whitespace_and_comments();
-
+        if !processed {
             if self.at_end() {
-                return Ok(self.output);
+                return Err(self.error("Unexpected end of json string"));
             }
-
-            // NDJSON or comma-separated values
-            return self.parse_ndjson();
-        }
-
-        if self.at_end() {
-            return Err(self.error("Unexpected end of json string"));
-        }
-        Err(self.error_char("Unexpected character"))
-    }
-
-    fn parse_ndjson(mut self) -> Result<String> {
-        let mut first_value = std::mem::take(&mut self.output);
-        let mut values = Vec::new();
-
-        let has_comma = first_value.ends_with(',');
-        if has_comma {
-            self.strip_last_occurrence_in(&mut first_value, ',');
-        }
-        values.push(first_value);
-
-        loop {
-            let processed = self.parse_value()?;
-            if !processed {
-                break;
-            }
-            let processed_comma = self.parse_char(',');
-            self.parse_whitespace_and_comments();
-            if processed_comma {
-                self.strip_last_occurrence(',');
-            }
-            self.skip_semicolons();
-            values.push(std::mem::take(&mut self.output));
-            self.output = String::new();
-        }
-
-        self.parse_whitespace_and_comments();
-
-        if !self.at_end() {
             return Err(self.error_char("Unexpected character"));
         }
 
-        if values.len() == 1 {
-            self.output = values.into_iter().next().unwrap_or_default();
-        } else {
-            self.output = format!("[\n{}\n]", values.join(",\n"));
+        self.parse_markdown_wrapped_close();
+
+        let processed_comma = self.parse_char(',');
+        if processed_comma {
+            self.parse_whitespace_and_comments();
         }
-        Ok(self.output)
-    }
 
-    fn is_jsonp_close(&self) -> bool {
-        self.peek() == Some(')')
-    }
+        if self.peek().is_some_and(chars::is_start_of_value)
+            && self.output_ends_with_comma_or_newline()
+        {
+            // Newline/comma delimited JSON on root level.
+            if !processed_comma {
+                self.insert_before_last_whitespace(",");
+            }
+            self.parse_ndjson()?;
+        } else if processed_comma {
+            // Remove trailing comma after a single root value.
+            self.strip_last_occurrence(',');
+        }
 
-    fn skip_semicolons(&mut self) {
+        // Repair redundant closing brackets at the root level.
+        while matches!(self.peek(), Some('}') | Some(']')) {
+            self.pos += 1;
+            self.parse_whitespace_and_comments();
+        }
+
+        // Optional trailing semicolons.
         while self.peek() == Some(';') {
             self.pos += 1;
             self.parse_whitespace_and_comments();
         }
+
+        if self.at_end() {
+            return Ok(self.output);
+        }
+
+        Err(self.error_char("Unexpected character"))
+    }
+
+    fn parse_ndjson(&mut self) -> Result<()> {
+        let mut initial = true;
+        let mut processed_value = true;
+        while processed_value {
+            if !initial {
+                let processed_comma = self.parse_char(',');
+                if !processed_comma {
+                    self.insert_before_last_whitespace(",");
+                }
+            } else {
+                initial = false;
+            }
+
+            processed_value = self.parse_value()?;
+        }
+
+        if !processed_value {
+            self.strip_last_occurrence(',');
+        }
+
+        self.output = format!("[\n{}\n]", self.output);
+        Ok(())
     }
 }
