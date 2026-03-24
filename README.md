@@ -1,6 +1,7 @@
 # jsonrepair-rs
 
 [![CI](https://github.com/majiayu000/jsonrepair-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/majiayu000/jsonrepair-rs/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/jsonrepair-rs.svg)](https://crates.io/crates/jsonrepair-rs)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Repair broken JSON in Rust. Fix quotes, commas, comments, trailing content, and 30+ other issues commonly found in LLM outputs.
