@@ -1,4 +1,5 @@
 use crate::chars;
+use crate::error::JsonRepairErrorKind;
 
 use super::JsonRepairer;
 use super::Result;
@@ -186,9 +187,10 @@ impl JsonRepairer {
                 } else {
                     let end = (backslash_pos + 6).min(self.chars.len());
                     let snippet: String = self.chars[backslash_pos..end].iter().collect();
-                    return Err(crate::error::JsonRepairError::new(
-                        format!("Invalid unicode character \"{snippet}\""),
+                    return Err(self.error_at_kind(
+                        &format!("Invalid unicode character \"{snippet}\""),
                         backslash_pos,
+                        JsonRepairErrorKind::InvalidUnicode,
                     ));
                 }
             }
@@ -225,7 +227,10 @@ impl JsonRepairer {
             '\x0C' => out.push_str("\\f"),
             _ => {
                 if !chars::is_valid_string_character(c) {
-                    return Err(self.error(&format!("Invalid character {:?}", c)));
+                    return Err(self.error_kind(
+                        &format!("Invalid character {:?}", c),
+                        JsonRepairErrorKind::InvalidCharacter,
+                    ));
                 }
                 out.push(c);
             }
@@ -315,13 +320,13 @@ impl JsonRepairer {
             self.pos -= 1;
         }
 
-        let symbol: String = self.chars[start..self.pos].iter().collect();
-        if symbol == "undefined" {
+        // Compare directly on char slice — no String allocation.
+        if self.slice_eq(start, self.pos, "undefined") {
             self.output.push_str("null");
         } else {
             self.output.push('"');
-            for c in symbol.chars() {
-                self.push_string_char(c);
+            for i in start..self.pos {
+                self.push_string_char(self.chars[i]);
             }
             self.output.push('"');
         }
@@ -334,6 +339,7 @@ impl JsonRepairer {
         Ok(true)
     }
 
+    /// Check if chars starting at `start` look like a URL scheme (no allocation).
     fn looks_like_url_start(&self, start: usize, slash_idx: usize) -> bool {
         if self.peek_at(slash_idx) != Some('/') || self.peek_at(slash_idx + 1) != Some('/') {
             return false;
@@ -341,9 +347,13 @@ impl JsonRepairer {
         if slash_idx + 2 > self.chars.len() || start >= slash_idx + 2 {
             return false;
         }
-
-        let prefix: String = self.chars[start..slash_idx + 2].iter().collect();
-        chars::is_url_scheme(&prefix)
+        self.matches_at(start, "http://")
+            || self.matches_at(start, "https://")
+            || self.matches_at(start, "ftp://")
+            || self.matches_at(start, "mailto://")
+            || self.matches_at(start, "file://")
+            || self.matches_at(start, "data://")
+            || self.matches_at(start, "irc://")
     }
 
     fn insert_before_last_whitespace_in_string(&self, s: &mut String, text: &str) {
@@ -353,21 +363,5 @@ impl JsonRepairer {
             idx -= 1;
         }
         s.insert_str(idx, text);
-    }
-
-    fn push_string_char(&mut self, c: char) {
-        match c {
-            '"' => self.output.push_str("\\\""),
-            '\\' => self.output.push_str("\\\\"),
-            '\n' => self.output.push_str("\\n"),
-            '\r' => self.output.push_str("\\r"),
-            '\t' => self.output.push_str("\\t"),
-            '\x08' => self.output.push_str("\\b"),
-            '\x0C' => self.output.push_str("\\f"),
-            c if (c as u32) < 0x20 => {
-                self.output.push_str(&format!("\\u{:04x}", c as u32));
-            }
-            _ => self.output.push(c),
-        }
     }
 }

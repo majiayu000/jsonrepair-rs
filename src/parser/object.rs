@@ -1,4 +1,5 @@
 use crate::chars;
+use crate::error::JsonRepairErrorKind;
 
 use super::JsonRepairer;
 use super::Result;
@@ -9,6 +10,7 @@ impl JsonRepairer {
             return Ok(false);
         }
 
+        self.enter_container()?;
         self.output.push('{');
         self.pos += 1;
         self.parse_whitespace_and_comments();
@@ -41,7 +43,10 @@ impl JsonRepairer {
                     // Trailing comma.
                     self.strip_last_occurrence(',');
                 } else {
-                    return Err(self.error("Object key expected"));
+                    return Err(self.error_kind(
+                        "Object key expected",
+                        JsonRepairErrorKind::ObjectKeyExpected,
+                    ));
                 }
                 break;
             }
@@ -64,7 +69,10 @@ impl JsonRepairer {
                     // Missing colon.
                     self.insert_before_last_whitespace(":");
                 } else {
-                    return Err(self.error("Colon expected"));
+                    return Err(self.error_kind(
+                        "Colon expected",
+                        JsonRepairErrorKind::ColonExpected,
+                    ));
                 }
             }
 
@@ -74,7 +82,10 @@ impl JsonRepairer {
                     // Missing object value.
                     self.output.push_str("null");
                 } else {
-                    return Err(self.error("Colon expected"));
+                    return Err(self.error_kind(
+                        "Colon expected",
+                        JsonRepairErrorKind::ColonExpected,
+                    ));
                 }
             }
         }
@@ -87,6 +98,7 @@ impl JsonRepairer {
             self.insert_before_last_whitespace("}");
         }
 
+        self.leave_container();
         Ok(true)
     }
 

@@ -63,15 +63,16 @@ impl JsonRepairer {
         }
 
         if self.pos > start {
-            let num: String = self.chars[start..self.pos].iter().collect();
-            let has_invalid_leading_zero =
-                num.starts_with('0') && num.chars().nth(1).is_some_and(|c| c.is_ascii_digit());
+            // Check for leading zeros directly on char slice — no String allocation.
+            let has_invalid_leading_zero = self.chars[start] == '0'
+                && self.pos > start + 1
+                && self.chars[start + 1].is_ascii_digit();
             if has_invalid_leading_zero {
                 self.output.push('"');
-                self.output.push_str(&num);
+                self.push_slice_to_output(start, self.pos);
                 self.output.push('"');
             } else {
-                self.output.push_str(&num);
+                self.push_slice_to_output(start, self.pos);
             }
             return Ok(true);
         }
@@ -86,9 +87,10 @@ impl JsonRepairer {
         }
     }
 
+    /// Repair a truncated number (e.g. "-" → "-0", "3." → "3.0").
+    /// Writes directly to output — no intermediate String.
     fn repair_number_ending_with_numeric_symbol(&mut self, start: usize) {
-        let mut s: String = self.chars[start..self.pos].iter().collect();
-        s.push('0');
-        self.output.push_str(&s);
+        self.push_slice_to_output(start, self.pos);
+        self.output.push('0');
     }
 }

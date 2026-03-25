@@ -1,4 +1,4 @@
-use jsonrepair_rs::{jsonrepair, JsonRepairError};
+use jsonrepair_rs::jsonrepair;
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -17,11 +17,10 @@ fn err(input: &str) {
 
 fn err_exact(input: &str, message: &str, position: usize) {
     let err = jsonrepair(input).expect_err(&format!("expected precise error for {input:?}"));
-    assert_eq!(
-        err,
-        JsonRepairError::new(message, position),
-        "input: {input:?}"
-    );
+    assert_eq!(err.message, message, "input: {input:?}");
+    assert_eq!(err.position, position, "input: {input:?}");
+    assert!(err.line > 0, "expected line info for {input:?}");
+    assert!(err.column > 0, "expected column info for {input:?}");
 }
 
 // ── 1. Valid JSON (pass-through, whitespace preserved) ───────
@@ -1340,4 +1339,93 @@ fn unquoted_string_pass_through_quoted() {
         "[\"This is C(2)\", \"This is F(3)\"]",
         "[\"This is C(2)\", \"This is F(3)\"]",
     );
+}
+
+// ── 53. Depth limit ──────────────────────────────────────────────
+
+#[test]
+fn repair_rejects_deeply_nested_input() {
+    let depth = 513;
+    let input = "[".repeat(depth);
+    let result = jsonrepair(&input);
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.message.contains("depth"),
+        "Expected depth error, got: {}",
+        err.message
+    );
+    assert_eq!(err.kind, jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded);
+}
+
+#[test]
+fn repair_accepts_max_depth_nesting() {
+    let depth = 512;
+    let input = "[".repeat(depth) + &"]".repeat(depth);
+    assert!(jsonrepair(&input).is_ok());
+}
+
+// ── 54. Idempotency ─────────────────────────────────────────────
+
+#[test]
+fn repair_is_idempotent() {
+    let inputs = vec![
+        "{'name': 'John'}",
+        "{a: 1, b: 2,}",
+        "[1, 2, /* comment */ 3]",
+        "True",
+        "{foo: bar}",
+        "[1 2 3]",
+        "```json\n{\"a\": 1}\n```",
+    ];
+    for input in inputs {
+        let first = jsonrepair(input).unwrap();
+        let second = jsonrepair(&first).unwrap();
+        assert_eq!(first, second, "Not idempotent for input: {:?}", input);
+    }
+}
+
+// ── 55. Output validity ─────────────────────────────────────────
+
+#[test]
+fn repair_output_is_valid_json() {
+    let inputs = vec![
+        "{'name': 'John'}",
+        "{a: 1, b: 2,}",
+        "[1, 2, 3,]",
+        "True",
+        "None",
+        "{foo: bar}",
+        "[1 2 3]",
+        "\"hello\" + \" world\"",
+        "// comment\n{\"a\": 1}",
+        "NaN",
+        "Infinity",
+    ];
+    for input in inputs {
+        let result = jsonrepair(input).unwrap();
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&result).is_ok(),
+            "Invalid JSON output for input {:?}: {:?}",
+            input,
+            result
+        );
+    }
+}
+
+// ── 56. Error enrichment ─────────────────────────────────────────
+
+#[test]
+fn error_includes_line_and_column() {
+    let input = "";
+    let err = jsonrepair(input).unwrap_err();
+    assert!(err.line > 0, "Expected line info in error");
+    assert!(err.column > 0, "Expected column info in error");
+}
+
+#[test]
+fn error_includes_kind() {
+    use jsonrepair_rs::JsonRepairErrorKind;
+    let err = jsonrepair("").unwrap_err();
+    assert_eq!(err.kind, JsonRepairErrorKind::UnexpectedEnd);
 }

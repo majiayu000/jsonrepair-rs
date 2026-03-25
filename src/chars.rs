@@ -99,15 +99,6 @@ pub fn is_url_char(c: char) -> bool {
         )
 }
 
-/// Test whether `s` is a supported URL scheme prefix ending in `://`.
-#[inline]
-pub fn is_url_scheme(s: &str) -> bool {
-    matches!(
-        s,
-        "http://" | "https://" | "ftp://" | "mailto://" | "file://" | "data://" | "irc://"
-    )
-}
-
 /// Check if a string character is valid in JSON (must be >= U+0020).
 #[inline]
 pub fn is_valid_string_character(c: char) -> bool {

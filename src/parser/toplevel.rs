@@ -1,4 +1,5 @@
 use crate::chars;
+use crate::error::JsonRepairErrorKind;
 
 use super::JsonRepairer;
 use super::Result;
@@ -10,9 +11,15 @@ impl JsonRepairer {
         let processed = self.parse_value()?;
         if !processed {
             if self.at_end() {
-                return Err(self.error("Unexpected end of json string"));
+                return Err(self.error_kind(
+                    "Unexpected end of json string",
+                    JsonRepairErrorKind::UnexpectedEnd,
+                ));
             }
-            return Err(self.error_char("Unexpected character"));
+            return Err(self.error_char_kind(
+                "Unexpected character",
+                JsonRepairErrorKind::UnexpectedCharacter,
+            ));
         }
 
         self.parse_markdown_wrapped_close();
@@ -51,7 +58,10 @@ impl JsonRepairer {
             return Ok(self.output);
         }
 
-        Err(self.error_char("Unexpected character"))
+        Err(self.error_char_kind(
+            "Unexpected character",
+            JsonRepairErrorKind::UnexpectedCharacter,
+        ))
     }
 
     fn parse_ndjson(&mut self) -> Result<()> {
@@ -74,7 +84,8 @@ impl JsonRepairer {
             self.strip_last_occurrence(',');
         }
 
-        self.output = format!("[\n{}\n]", self.output);
+        self.output.insert_str(0, "[\n");
+        self.output.push_str("\n]");
         Ok(())
     }
 }

@@ -7,6 +7,7 @@ impl JsonRepairer {
             return Ok(false);
         }
 
+        self.enter_container()?;
         self.output.push('[');
         self.pos += 1;
         self.parse_whitespace_and_comments();
@@ -45,6 +46,7 @@ impl JsonRepairer {
             // Missing closing array bracket.
             self.insert_before_last_whitespace("]");
         }
+        self.leave_container();
         Ok(true)
     }
 }

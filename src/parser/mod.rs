@@ -1,5 +1,7 @@
+use std::fmt::Write;
+
 use crate::chars;
-use crate::error::JsonRepairError;
+use crate::error::{JsonRepairError, JsonRepairErrorKind};
 
 pub(crate) type Result<T> = std::result::Result<T, JsonRepairError>;
 
@@ -11,12 +13,15 @@ mod object;
 mod string;
 mod toplevel;
 
+const MAX_DEPTH: usize = 512;
+
 /// Recursive-descent JSON repair parser.
 /// Copy-on-repair: preserves original whitespace, only modifies what needs fixing.
 pub struct JsonRepairer {
     pub(super) chars: Vec<char>,
     pub(super) pos: usize,
     pub(super) output: String,
+    pub(super) depth: usize,
 }
 
 impl JsonRepairer {
@@ -26,6 +31,7 @@ impl JsonRepairer {
             chars: input.chars().collect(),
             pos: 0,
             output: String::with_capacity(input.len()),
+            depth: 0,
         }
     }
 
@@ -81,6 +87,23 @@ impl JsonRepairer {
 
     fn parse_slash(&mut self) -> Result<bool> {
         self.parse_regex_as_string()
+    }
+
+    // ── Depth tracking ────────────────────────────────────
+
+    pub(super) fn enter_container(&mut self) -> Result<()> {
+        self.depth += 1;
+        if self.depth > MAX_DEPTH {
+            return Err(self.error_kind(
+                "Maximum nesting depth exceeded",
+                JsonRepairErrorKind::MaxDepthExceeded,
+            ));
+        }
+        Ok(())
+    }
+
+    pub(super) fn leave_container(&mut self) {
+        self.depth -= 1;
     }
 
     // ── Whitespace / comments ───────────────────────────────
@@ -182,14 +205,17 @@ impl JsonRepairer {
         }
     }
 
+    /// Check if `pattern` matches at position `pos` in the input.
+    /// Iterates pattern chars directly — no allocation.
     pub(super) fn matches_at(&self, pos: usize, pattern: &str) -> bool {
-        let pat: Vec<char> = pattern.chars().collect();
-        if pos + pat.len() > self.chars.len() {
-            return false;
+        let mut i = 0;
+        for pc in pattern.chars() {
+            if pos + i >= self.chars.len() || self.chars[pos + i] != pc {
+                return false;
+            }
+            i += 1;
         }
-        pat.iter()
-            .enumerate()
-            .all(|(i, &pc)| self.chars[pos + i] == pc)
+        true
     }
 
     /// Remove last occurrence of `c` from output.
@@ -209,16 +235,82 @@ impl JsonRepairer {
         self.output.insert_str(idx, text);
     }
 
-    pub(super) fn error(&self, msg: &str) -> JsonRepairError {
-        JsonRepairError::new(msg, self.pos)
+    /// Write chars from input slice directly to output — no intermediate String.
+    pub(super) fn push_slice_to_output(&mut self, start: usize, end: usize) {
+        for i in start..end {
+            self.output.push(self.chars[i]);
+        }
     }
 
-    pub(super) fn error_char(&self, prefix: &str) -> JsonRepairError {
-        if let Some(c) = self.peek() {
-            JsonRepairError::new(format!("{prefix} \"{c}\""), self.pos)
-        } else {
-            JsonRepairError::new(prefix, self.pos)
+    /// Check if input char slice equals a keyword — no allocation.
+    pub(super) fn slice_eq(&self, start: usize, end: usize, keyword: &str) -> bool {
+        if end - start != keyword.len() {
+            return false;
         }
+        keyword
+            .chars()
+            .enumerate()
+            .all(|(i, c)| self.chars[start + i] == c)
+    }
+
+    /// Push a char to output, escaping it for JSON strings.
+    pub(super) fn push_string_char(&mut self, c: char) {
+        match c {
+            '"' => self.output.push_str("\\\""),
+            '\\' => self.output.push_str("\\\\"),
+            '\n' => self.output.push_str("\\n"),
+            '\r' => self.output.push_str("\\r"),
+            '\t' => self.output.push_str("\\t"),
+            '\x08' => self.output.push_str("\\b"),
+            '\x0C' => self.output.push_str("\\f"),
+            c if (c as u32) < 0x20 => {
+                let _ = write!(self.output, "\\u{:04x}", c as u32);
+            }
+            _ => self.output.push(c),
+        }
+    }
+
+    fn compute_line_col(&self, pos: usize) -> (usize, usize) {
+        let mut line = 1;
+        let mut col = 1;
+        for i in 0..pos.min(self.chars.len()) {
+            if self.chars[i] == '\n' {
+                line += 1;
+                col = 1;
+            } else {
+                col += 1;
+            }
+        }
+        (line, col)
+    }
+
+    pub(super) fn error_kind(&self, msg: &str, kind: JsonRepairErrorKind) -> JsonRepairError {
+        let (line, col) = self.compute_line_col(self.pos);
+        JsonRepairError::with_kind(msg, self.pos, kind).with_location(line, col)
+    }
+
+    pub(super) fn error_at_kind(
+        &self,
+        msg: &str,
+        pos: usize,
+        kind: JsonRepairErrorKind,
+    ) -> JsonRepairError {
+        let (line, col) = self.compute_line_col(pos);
+        JsonRepairError::with_kind(msg, pos, kind).with_location(line, col)
+    }
+
+    pub(super) fn error_char_kind(
+        &self,
+        prefix: &str,
+        kind: JsonRepairErrorKind,
+    ) -> JsonRepairError {
+        let msg = if let Some(c) = self.peek() {
+            format!("{prefix} \"{c}\"")
+        } else {
+            prefix.to_string()
+        };
+        let (line, col) = self.compute_line_col(self.pos);
+        JsonRepairError::with_kind(msg, self.pos, kind).with_location(line, col)
     }
 
     /// Find previous non-whitespace character index from `start` backwards.
@@ -237,14 +329,17 @@ impl JsonRepairer {
     }
 
     /// True when output ends with comma or newline followed by optional spaces/tabs/cr.
+    /// Works on bytes to avoid UTF-8 decoding overhead.
     pub(super) fn output_ends_with_comma_or_newline(&self) -> bool {
-        let mut it = self.output.chars().rev();
-        loop {
-            match it.next() {
-                Some(' ') | Some('\t') | Some('\r') => continue,
-                Some(',') | Some('\n') => return true,
+        let bytes = self.output.as_bytes();
+        let mut i = bytes.len();
+        while i > 0 {
+            match bytes[i - 1] {
+                b' ' | b'\t' | b'\r' => i -= 1,
+                b',' | b'\n' => return true,
                 _ => return false,
             }
         }
+        false
     }
 }

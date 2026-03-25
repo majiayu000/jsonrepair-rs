@@ -27,7 +27,7 @@ mod chars;
 mod error;
 mod parser;
 
-pub use error::JsonRepairError;
+pub use error::{JsonRepairError, JsonRepairErrorKind};
 
 /// Repair a broken JSON string, returning valid JSON.
 ///

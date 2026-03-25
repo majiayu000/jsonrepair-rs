@@ -66,13 +66,28 @@ assert_eq!(result, "{\n    \n    \"name\": \"Alice\",\n    \"age\": 30\n}");
 
 ## Error handling
 
+Errors include category, position, and line/column info for easy debugging:
+
 ```rust
-use jsonrepair_rs::{jsonrepair, JsonRepairError};
+use jsonrepair_rs::{jsonrepair, JsonRepairError, JsonRepairErrorKind};
 
 match jsonrepair("not repairable at all") {
     Ok(json) => println!("Repaired: {json}"),
-    Err(e) => eprintln!("Error at position {}: {}", e.position, e.message),
+    Err(e) => {
+        eprintln!("Error at line {}:{} — {}", e.line, e.column, e.message);
+        match e.kind {
+            JsonRepairErrorKind::UnexpectedEnd => eprintln!("Input ended too early"),
+            JsonRepairErrorKind::MaxDepthExceeded => eprintln!("Nesting too deep"),
+            _ => eprintln!("Position: {}", e.position),
+        }
+    }
 }
+```
+
+## Benchmarks
+
+```sh
+cargo bench
 ```
 
 ## Acknowledgments
