@@ -64,10 +64,7 @@ fn bench_deeply_nested(c: &mut Criterion) {
 fn bench_comments(c: &mut Criterion) {
     let mut input = String::from("{\n");
     for i in 0..100 {
-        input.push_str(&format!(
-            "  // comment {}\n  \"key_{}\": {},\n",
-            i, i, i
-        ));
+        input.push_str(&format!("  // comment {}\n  \"key_{}\": {},\n", i, i, i));
     }
     input.push_str("  \"last\": true\n}");
     c.bench_function("comments_100", |b| {

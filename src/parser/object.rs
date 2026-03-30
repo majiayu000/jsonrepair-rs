@@ -69,10 +69,9 @@ impl JsonRepairer {
                     // Missing colon.
                     self.insert_before_last_whitespace(":");
                 } else {
-                    return Err(self.error_kind(
-                        "Colon expected",
-                        JsonRepairErrorKind::ColonExpected,
-                    ));
+                    return Err(
+                        self.error_kind("Colon expected", JsonRepairErrorKind::ColonExpected)
+                    );
                 }
             }
 
@@ -82,10 +81,9 @@ impl JsonRepairer {
                     // Missing object value.
                     self.output.push_str("null");
                 } else {
-                    return Err(self.error_kind(
-                        "Colon expected",
-                        JsonRepairErrorKind::ColonExpected,
-                    ));
+                    return Err(
+                        self.error_kind("Colon expected", JsonRepairErrorKind::ColonExpected)
+                    );
                 }
             }
         }

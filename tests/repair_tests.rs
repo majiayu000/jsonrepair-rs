@@ -1355,7 +1355,10 @@ fn repair_rejects_deeply_nested_input() {
         "Expected depth error, got: {}",
         err.message
     );
-    assert_eq!(err.kind, jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded);
+    assert_eq!(
+        err.kind,
+        jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+    );
 }
 
 #[test]

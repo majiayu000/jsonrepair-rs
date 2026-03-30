@@ -25,6 +25,19 @@ cargo fmt
 RUSTFLAGS="-Dwarnings" cargo check --all-targets
 ```
 
+## Pre-commit
+
+```bash
+# Install pre-commit with uv
+uv tool install pre-commit
+
+# Install git hook in this repo
+pre-commit install
+
+# Run all hooks manually
+pre-commit run --all-files
+```
+
 ## Adding a new repair pattern
 
 1. Add test case(s) in `tests/repair_tests.rs`

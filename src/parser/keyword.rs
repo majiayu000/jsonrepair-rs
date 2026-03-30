@@ -15,24 +15,24 @@ impl JsonRepairer {
             self.pos += 1;
         }
 
-        let replacement =
-            if self.slice_eq(start, self.pos, "true") || self.slice_eq(start, self.pos, "True") {
-                "true"
-            } else if self.slice_eq(start, self.pos, "false")
-                || self.slice_eq(start, self.pos, "False")
-            {
-                "false"
-            } else if self.slice_eq(start, self.pos, "null")
-                || self.slice_eq(start, self.pos, "None")
-                || self.slice_eq(start, self.pos, "undefined")
-                || self.slice_eq(start, self.pos, "NaN")
-                || self.slice_eq(start, self.pos, "Infinity")
-            {
-                "null"
-            } else {
-                self.pos = start;
-                return self.parse_unquoted_string(false);
-            };
+        let replacement = if self.slice_eq(start, self.pos, "true")
+            || self.slice_eq(start, self.pos, "True")
+        {
+            "true"
+        } else if self.slice_eq(start, self.pos, "false") || self.slice_eq(start, self.pos, "False")
+        {
+            "false"
+        } else if self.slice_eq(start, self.pos, "null")
+            || self.slice_eq(start, self.pos, "None")
+            || self.slice_eq(start, self.pos, "undefined")
+            || self.slice_eq(start, self.pos, "NaN")
+            || self.slice_eq(start, self.pos, "Infinity")
+        {
+            "null"
+        } else {
+            self.pos = start;
+            return self.parse_unquoted_string(false);
+        };
 
         self.output.push_str(replacement);
         Ok(true)
