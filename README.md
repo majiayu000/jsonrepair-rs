@@ -4,89 +4,133 @@
 [![Crates.io](https://img.shields.io/crates/v/jsonrepair-rs.svg)](https://crates.io/crates/jsonrepair-rs)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Repair broken JSON in Rust. Fix quotes, commas, comments, trailing content, and 30+ other issues commonly found in LLM outputs.
+Repair broken JSON in Rust.
+
+`jsonrepair-rs` takes malformed JSON-like text (often from LLM output) and returns valid JSON text.
 
 Rust port of [josdejong/jsonrepair](https://github.com/josdejong/jsonrepair).
 
-## Features
+## Installation
 
-| Category | Examples |
-|----------|----------|
-| **Quote repair** | Single quotes → double, curly quotes, backticks, unquoted keys |
-| **Comma repair** | Missing, trailing, and leading commas |
-| **Comments** | `//`, `/* */`, `#` — stripped from output |
-| **Python keywords** | `True` → `true`, `False` → `false`, `None` → `null` |
-| **JS keywords** | `undefined` → `null`, `NaN` → `null`, `Infinity` → `null` |
-| **Markdown fences** | `` ```json ... ``` `` — extracted and repaired |
-| **Truncated JSON** | Auto-closes unclosed brackets, braces, and strings |
-| **Number repair** | Leading zeros, trailing dots (`2.` → `2.0`), truncated exponents |
-| **String repair** | Concatenation (`"a" + "b"`), invalid escapes, unescaped control chars |
-| **JSONP** | `callback({...})` → `{...}` |
-| **MongoDB** | `ObjectId("...")` → `"..."`, `NumberLong("...")` → `"..."` |
-| **NDJSON** | Newline-delimited JSON → JSON array |
-| **Ellipsis** | `[1, 2, ...]` → `[1, 2]` |
-| **Misc** | BOM stripping, special whitespace, trailing semicolons |
-
-## Usage
-
-Add to your `Cargo.toml`:
+Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
 jsonrepair-rs = "0.1"
 ```
 
+## Quick Start
+
+This crate is a **library crate** (no built-in CLI binary).
+
 ```rust
 use jsonrepair_rs::jsonrepair;
 
-// Fix single quotes (whitespace preserved)
-let result = jsonrepair("{'name': 'John'}").unwrap();
-assert_eq!(result, r#"{"name": "John"}"#);
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let broken = r#"{name: 'Alice', active: True, skills: ['Rust',],}"#;
+    let repaired = jsonrepair(broken)?;
 
-// Fix trailing commas
-let result = jsonrepair(r#"{"a": 1, "b": 2,}"#).unwrap();
-assert_eq!(result, r#"{"a": 1, "b": 2}"#);
-
-// Strip markdown fences
-let result = jsonrepair("```json\n{\"a\": 1}\n```").unwrap();
-assert_eq!(result, "\n{\"a\": 1}\n");
-
-// Convert Python keywords
-let result = jsonrepair("{\"flag\": True, \"value\": None}").unwrap();
-assert_eq!(result, r#"{"flag": true, "value": null}"#);
-
-// Handle LLM output with comments
-let result = jsonrepair(r#"{
-    // user info
-    name: "Alice",
-    age: 30,
-}"#).unwrap();
-assert_eq!(result, "{\n    \n    \"name\": \"Alice\",\n    \"age\": 30\n}");
+    // repaired is always a valid JSON string when Ok(...)
+    println!("{repaired}");
+    Ok(())
+}
 ```
 
-## Error handling
+Output:
 
-Errors include category, position, and line/column info for easy debugging:
+```json
+{"name": "Alice", "active": true, "skills": ["Rust"]}
+```
+
+## API
 
 ```rust
-use jsonrepair_rs::{jsonrepair, JsonRepairError, JsonRepairErrorKind};
+pub fn jsonrepair(input: &str) -> Result<String, JsonRepairError>
+```
+
+- Input: malformed JSON-like text.
+- Output: repaired JSON string.
+- On failure: returns `JsonRepairError` with `kind`, `position`, `line`, and `column`.
+
+If you need a typed value, parse the repaired string with `serde_json`:
+
+```rust
+use jsonrepair_rs::jsonrepair;
+
+let repaired = jsonrepair("{a:1, b:2,}").unwrap();
+let value: serde_json::Value = serde_json::from_str(&repaired).unwrap();
+assert_eq!(value["a"], 1);
+```
+
+## Common Repairs
+
+| Category | Examples |
+| --- | --- |
+| Quote repair | single quotes, curly quotes, backticks, unquoted keys |
+| Comma repair | missing commas, trailing commas, leading commas |
+| Comments | `//`, `/* */`, `#` comments are removed |
+| Python keywords | `True` → `true`, `False` → `false`, `None` → `null` |
+| JS keywords | `undefined`/`NaN`/`Infinity` → `null` |
+| Markdown fences | extracts content from fenced blocks like `````json ... ````` |
+| Truncated JSON | auto-closes missing `]`, `}`, and string terminators |
+| Number fixes | leading zeros, trailing dots (`2.` → `2.0`), truncated exponents |
+| String fixes | concatenation (`"a" + "b"`), invalid escapes, control chars |
+| JSONP | `callback({...})` → `{...}` |
+| MongoDB wrappers | `ObjectId("...")`, `NumberLong("...")` |
+| NDJSON | newline-delimited JSON converted to a JSON array |
+| Ellipsis | `[1, 2, ...]` → `[1, 2]` |
+
+## Error Handling
+
+```rust
+use jsonrepair_rs::{jsonrepair, JsonRepairErrorKind};
 
 match jsonrepair("not repairable at all") {
     Ok(json) => println!("Repaired: {json}"),
     Err(e) => {
-        eprintln!("Error at line {}:{} — {}", e.line, e.column, e.message);
-        match e.kind {
-            JsonRepairErrorKind::UnexpectedEnd => eprintln!("Input ended too early"),
-            JsonRepairErrorKind::MaxDepthExceeded => eprintln!("Nesting too deep"),
-            _ => eprintln!("Position: {}", e.position),
+        eprintln!("kind={:?}, at {}:{} (pos={}): {}", e.kind, e.line, e.column, e.position, e.message);
+
+        if matches!(e.kind, JsonRepairErrorKind::MaxDepthExceeded) {
+            eprintln!("input nesting depth exceeded the internal limit");
         }
     }
 }
 ```
 
+## Notes
+
+- Maximum supported nesting depth is 512.
+- When no safe repair is possible, the function returns an error instead of guessing.
+
+## Development
+
+```bash
+# Build and test
+cargo build
+cargo test
+
+# CI-equivalent checks
+RUSTFLAGS="-Dwarnings" cargo check --all-targets
+cargo fmt --all -- --check
+cargo doc --no-deps
+```
+
+## Pre-commit
+
+```bash
+# Install pre-commit (using uv)
+uv tool install pre-commit
+
+# Install git hook for this repo
+pre-commit install
+
+# Run hooks manually
+pre-commit run --all-files
+```
+
 ## Benchmarks
 
-```sh
+```bash
 cargo bench
 ```
 
