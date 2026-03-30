@@ -744,8 +744,14 @@ fn leading_zero_more_cases() {
     ok("000789", "\"000789\"");
     ok("001.2", "\"001.2\"");
     ok("002e3", "\"002e3\"");
+    ok("-01", "\"-01\"");
+    ok("-00", "\"-00\"");
+    ok("00.", "\"00.0\"");
+    ok("00e", "\"00e0\"");
     ok("[0789]", "[\"0789\"]");
+    ok("[-01]", "[\"-01\"]");
     ok("{value:0789}", "{\"value\":\"0789\"}");
+    ok("{value:-01}", "{\"value\":\"-01\"}");
 }
 
 #[test]
@@ -927,8 +933,19 @@ fn jsonp_scalar_variants() {
     ok("callback_123(null);", "null");
     ok("callback_123(true);", "true");
     ok("callback_123(false);", "false");
+    ok("callback123({\"a\":1});", "{\"a\":1}");
+    ok("jsonp_123({\"a\":1});", "{\"a\":1}");
+    ok("jQuery123456789012345_678({\"ok\":true});", "{\"ok\":true}");
+    ok("cb({\"a\":1});", "{\"a\":1}");
     ok("  /* foo bar */   callback_123({});  ", "     {}  ");
     ok("\n/* foo\nbar */\ncallback_123 ({});\n\n", "\n\n{}\n\n");
+}
+
+#[test]
+fn unknown_function_call_is_not_wrapper() {
+    ok("hello(world)", "\"hello(world)\"");
+    ok("foo(1,2)", "\"foo(1,2)\"");
+    ok("{expr:foo(1,2)}", "{\"expr\":\"foo(1,2)\"}");
 }
 
 #[test]
@@ -1404,6 +1421,9 @@ fn repair_output_is_valid_json() {
         "// comment\n{\"a\": 1}",
         "NaN",
         "Infinity",
+        "-01",
+        "00e",
+        "{value:-01}",
     ];
     for input in inputs {
         let result = jsonrepair(input).unwrap();

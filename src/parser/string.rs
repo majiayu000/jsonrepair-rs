@@ -276,12 +276,14 @@ impl JsonRepairer {
             while self.peek().is_some_and(chars::is_identifier_char) {
                 self.pos += 1;
             }
+            let identifier_end = self.pos;
 
             let mut j = self.pos;
             while self.peek_at(j).is_some_and(chars::is_whitespace) {
                 j += 1;
             }
-            if self.peek_at(j) == Some('(') {
+            if self.peek_at(j) == Some('(') && self.is_known_wrapper_function(start, identifier_end)
+            {
                 // MongoDB and JSONP style wrapper function.
                 self.pos = j + 1;
                 let _ = self.parse_value()?;
@@ -295,8 +297,24 @@ impl JsonRepairer {
             }
         }
 
+        let mut parenthesis_depth = 0usize;
         while let Some(c) = self.peek() {
-            if chars::is_unquoted_string_delimiter(c) || chars::is_quote(c) || (is_key && c == ':')
+            if c == '(' {
+                parenthesis_depth += 1;
+                self.pos += 1;
+                continue;
+            }
+
+            if c == ')' && parenthesis_depth > 0 {
+                parenthesis_depth -= 1;
+                self.pos += 1;
+                continue;
+            }
+
+            if parenthesis_depth == 0
+                && (chars::is_unquoted_string_delimiter(c)
+                    || chars::is_quote(c)
+                    || (is_key && c == ':'))
             {
                 break;
             }
@@ -354,6 +372,29 @@ impl JsonRepairer {
             || self.matches_at(start, "file://")
             || self.matches_at(start, "data://")
             || self.matches_at(start, "irc://")
+    }
+
+    fn is_known_wrapper_function(&self, start: usize, end: usize) -> bool {
+        self.slice_starts_with(start, end, "callback")
+            || self.slice_eq(start, end, "cb")
+            || self.slice_starts_with(start, end, "jsonp")
+            || self.slice_starts_with(start, end, "jQuery")
+            || self.slice_eq(start, end, "ObjectId")
+            || self.slice_eq(start, end, "NumberLong")
+            || self.slice_eq(start, end, "NumberInt")
+            || self.slice_eq(start, end, "NumberDecimal")
+            || self.slice_eq(start, end, "ISODate")
+    }
+
+    fn slice_starts_with(&self, start: usize, end: usize, prefix: &str) -> bool {
+        let prefix_len = prefix.len();
+        if end - start < prefix_len {
+            return false;
+        }
+        prefix
+            .chars()
+            .enumerate()
+            .all(|(i, c)| self.chars[start + i] == c)
     }
 
     fn insert_before_last_whitespace_in_string(&self, s: &mut String, text: &str) {
