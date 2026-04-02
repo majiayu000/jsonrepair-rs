@@ -42,6 +42,18 @@ Output:
 {"name": "Alice", "active": true, "skills": ["Rust"]}
 ```
 
+## Examples
+
+This repository includes runnable examples in `examples/`:
+
+```bash
+cargo run --example repair_basic
+cargo run --example repair_and_parse
+```
+
+- `repair_basic`: repairs a malformed JSON-like string and prints the result.
+- `repair_and_parse`: repairs input, parses with `serde_json`, and validates key fields.
+
 ## API
 
 ```rust

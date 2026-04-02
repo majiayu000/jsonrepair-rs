@@ -1432,6 +1432,10 @@ fn repair_output_is_valid_json() {
         "-01",
         "00e",
         "{value:-01}",
+        "{undefined:1}",
+        "/\t/",
+        "/\x08/",
+        r"/\\z/",
     ];
     for input in inputs {
         let result = jsonrepair(input).unwrap();
