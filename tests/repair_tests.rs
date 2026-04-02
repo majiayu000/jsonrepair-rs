@@ -1058,6 +1058,11 @@ fn add_missing_quotes_complete() {
     ok("[\na,\nb\n]", "[\n\"a\",\n\"b\"\n]");
 }
 
+#[test]
+fn undefined_key_should_be_quoted() {
+    ok("{undefined:1}", "{\"undefined\":1}");
+}
+
 // ── 32. Unquoted URL (remaining official) ────────────────────────
 
 #[test]

@@ -339,7 +339,7 @@ impl JsonRepairer {
         }
 
         // Compare directly on char slice — no String allocation.
-        if self.slice_eq(start, self.pos, "undefined") {
+        if !is_key && self.slice_eq(start, self.pos, "undefined") {
             self.output.push_str("null");
         } else {
             self.output.push('"');
