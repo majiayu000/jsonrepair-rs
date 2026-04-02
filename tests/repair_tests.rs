@@ -577,6 +577,9 @@ fn regex_repairs() {
         "/foo\"; console.log(-1); \"/",
         "\"/foo\\\"; console.log(-1); \\\"/\"",
     );
+    ok("/\t/", r#""/\t/""#);
+    ok("/\x08/", r#""/\b/""#);
+    ok(r"/\\z/", r#""/\\\\z/""#);
 }
 
 #[test]

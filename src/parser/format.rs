@@ -73,6 +73,7 @@ impl JsonRepairer {
         self.pos += 1;
         self.output.push('"');
         self.output.push('/');
+        let mut escaped = false;
 
         loop {
             match self.peek() {
@@ -81,35 +82,21 @@ impl JsonRepairer {
                     self.output.push('"');
                     return Ok(true);
                 }
-                Some('/') => {
-                    self.pos += 1;
-                    self.output.push('/');
-                    while self.peek().is_some_and(|c| c.is_ascii_alphabetic()) {
-                        self.output.push(self.chars[self.pos]);
-                        self.pos += 1;
-                    }
-                    self.output.push('"');
-                    return Ok(true);
-                }
-                Some('\\') => {
-                    self.pos += 1;
-                    self.output.push_str("\\\\");
-                    if let Some(c) = self.peek() {
-                        self.pos += 1;
-                        if c == '"' {
-                            self.output.push_str("\\\"");
-                        } else {
-                            self.output.push(c);
-                        }
-                    }
-                }
                 Some(c) => {
                     self.pos += 1;
-                    if c == '"' {
-                        self.output.push_str("\\\"");
-                    } else {
-                        self.output.push(c);
+                    if c == '/' && !escaped {
+                        self.output.push('/');
+                        while self.peek().is_some_and(|flag| flag.is_ascii_alphabetic()) {
+                            let flag = self.chars[self.pos];
+                            self.push_string_char(flag);
+                            self.pos += 1;
+                        }
+                        self.output.push('"');
+                        return Ok(true);
                     }
+
+                    self.push_string_char(c);
+                    escaped = c == '\\' && !escaped;
                 }
             }
         }
