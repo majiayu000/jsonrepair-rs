@@ -208,12 +208,10 @@ impl JsonRepairer {
     /// Check if `pattern` matches at position `pos` in the input.
     /// Iterates pattern chars directly — no allocation.
     pub(super) fn matches_at(&self, pos: usize, pattern: &str) -> bool {
-        let mut i = 0;
-        for pc in pattern.chars() {
+        for (i, pc) in pattern.chars().enumerate() {
             if pos + i >= self.chars.len() || self.chars[pos + i] != pc {
                 return false;
             }
-            i += 1;
         }
         true
     }

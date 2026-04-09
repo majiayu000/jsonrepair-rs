@@ -10,6 +10,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(value["regex"], r"/\\z/");
 
     println!("repaired: {repaired}");
-    println!("parsed keys: {:?}", value.as_object().map(|obj| obj.keys().collect::<Vec<_>>()));
+    println!(
+        "parsed keys: {:?}",
+        value.as_object().map(|obj| obj.keys().collect::<Vec<_>>())
+    );
     Ok(())
 }

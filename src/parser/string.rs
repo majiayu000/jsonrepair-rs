@@ -37,7 +37,7 @@ impl JsonRepairer {
 
         let input_start = self.pos;
         let output_start = self.output.len();
-        let mut current = String::from("\"");
+        self.output.push('"');
         self.pos += 1;
 
         loop {
@@ -55,24 +55,21 @@ impl JsonRepairer {
                     return self.parse_string_internal(true, None);
                 }
 
-                self.insert_before_last_whitespace_in_string(&mut current, "\"");
-                self.output.push_str(&current);
+                self.insert_before_last_output_whitespace(output_start + 1, "\"");
                 return Ok(true);
             }
 
             if stop_at_index.is_some_and(|idx| self.pos == idx) {
-                self.insert_before_last_whitespace_in_string(&mut current, "\"");
-                self.output.push_str(&current);
+                self.insert_before_last_output_whitespace(output_start + 1, "\"");
                 return Ok(true);
             }
 
             let c = self.chars[self.pos];
             if is_end_quote(c) {
                 let quote_pos = self.pos;
-                let quote_out_len = current.len();
-                current.push('"');
+                let quote_output_pos = self.output.len();
+                self.output.push('"');
                 self.pos += 1;
-                self.output.push_str(&current);
 
                 self.parse_whitespace_and_comments_with_newline(false);
                 let next = self.peek();
@@ -106,13 +103,9 @@ impl JsonRepairer {
                 }
 
                 // Not a real closing quote: continue, escaping this quote.
-                self.output.truncate(output_start);
+                self.output.truncate(quote_output_pos);
+                self.output.push_str("\\\"");
                 self.pos = quote_pos + 1;
-                let mut escaped = String::with_capacity(current.len() + 1);
-                escaped.push_str(&current[..quote_out_len]);
-                escaped.push('\\');
-                escaped.push_str(&current[quote_out_len..]);
-                current = escaped;
             } else if stop_at_delimiter && chars::is_unquoted_string_delimiter(c) {
                 // URL like "https://..." should not stop at '/'.
                 if self.pos > input_start + 1
@@ -120,19 +113,18 @@ impl JsonRepairer {
                     && self.looks_like_url_start(input_start + 1, self.pos)
                 {
                     while self.peek().is_some_and(chars::is_url_char) {
-                        current.push(self.chars[self.pos]);
+                        self.output.push(self.chars[self.pos]);
                         self.pos += 1;
                     }
                 }
 
-                self.insert_before_last_whitespace_in_string(&mut current, "\"");
-                self.output.push_str(&current);
+                self.insert_before_last_output_whitespace(output_start + 1, "\"");
                 self.parse_concatenated_string()?;
                 return Ok(true);
             } else if c == '\\' {
-                self.parse_string_escape(&mut current)?;
+                self.parse_string_escape()?;
             } else {
-                self.parse_string_char(&mut current, c)?;
+                self.parse_string_char(c)?;
             }
 
             if skip_escape_chars {
@@ -144,7 +136,7 @@ impl JsonRepairer {
         }
     }
 
-    fn parse_string_escape(&mut self, out: &mut String) -> Result<()> {
+    fn parse_string_escape(&mut self) -> Result<()> {
         let backslash_pos = self.pos;
         self.pos += 1; // skip '\'
         let esc = match self.peek() {
@@ -156,13 +148,13 @@ impl JsonRepairer {
 
         match esc {
             '"' | '\\' | '/' => {
-                out.push('\\');
-                out.push(esc);
+                self.output.push('\\');
+                self.output.push(esc);
                 self.pos += 1;
             }
             'b' | 'f' | 'n' | 'r' | 't' => {
-                out.push('\\');
-                out.push(esc);
+                self.output.push('\\');
+                self.output.push(esc);
                 self.pos += 1;
             }
             'u' => {
@@ -176,9 +168,9 @@ impl JsonRepairer {
                 }
 
                 if digits == 4 {
-                    out.push_str("\\u");
+                    self.output.push_str("\\u");
                     for i in 0..4 {
-                        out.push(self.chars[self.pos + 1 + i]);
+                        self.output.push(self.chars[self.pos + 1 + i]);
                     }
                     self.pos += 5; // 'u' + 4 hex digits
                 } else if self.pos + 1 + digits >= self.chars.len() {
@@ -196,7 +188,7 @@ impl JsonRepairer {
             }
             '\'' => {
                 // Keep a raw apostrophe when escaping single quote.
-                out.push('\'');
+                self.output.push('\'');
                 self.pos += 1;
             }
             '\n' | '\r' => {
@@ -205,26 +197,26 @@ impl JsonRepairer {
             }
             _ => {
                 // Invalid escape: drop '\' and keep char.
-                out.push(esc);
+                self.output.push(esc);
                 self.pos += 1;
             }
         }
         Ok(())
     }
 
-    fn parse_string_char(&mut self, out: &mut String, c: char) -> Result<()> {
+    fn parse_string_char(&mut self, c: char) -> Result<()> {
         if c == '"' {
-            out.push_str("\\\"");
+            self.output.push_str("\\\"");
             self.pos += 1;
             return Ok(());
         }
 
         match c {
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            '\x08' => out.push_str("\\b"),
-            '\x0C' => out.push_str("\\f"),
+            '\n' => self.output.push_str("\\n"),
+            '\r' => self.output.push_str("\\r"),
+            '\t' => self.output.push_str("\\t"),
+            '\x08' => self.output.push_str("\\b"),
+            '\x0C' => self.output.push_str("\\f"),
             _ => {
                 if !chars::is_valid_string_character(c) {
                     return Err(self.error_kind(
@@ -232,7 +224,7 @@ impl JsonRepairer {
                         JsonRepairErrorKind::InvalidCharacter,
                     ));
                 }
-                out.push(c);
+                self.output.push(c);
             }
         }
 
@@ -397,12 +389,12 @@ impl JsonRepairer {
             .all(|(i, c)| self.chars[start + i] == c)
     }
 
-    fn insert_before_last_whitespace_in_string(&self, s: &mut String, text: &str) {
-        let bytes = s.as_bytes();
+    fn insert_before_last_output_whitespace(&mut self, start: usize, text: &str) {
+        let bytes = self.output.as_bytes();
         let mut idx = bytes.len();
-        while idx > 0 && matches!(bytes[idx - 1], b' ' | b'\n' | b'\r' | b'\t') {
+        while idx > start && matches!(bytes[idx - 1], b' ' | b'\n' | b'\r' | b'\t') {
             idx -= 1;
         }
-        s.insert_str(idx, text);
+        self.output.insert_str(idx, text);
     }
 }
