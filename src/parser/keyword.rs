@@ -57,8 +57,10 @@ impl JsonRepairer {
             return Ok(false);
         }
 
-        if self.is_case_insensitive_keyword(token_start, self.pos, "nan")
-            || self.is_case_insensitive_keyword(token_start, self.pos, "infinity")
+        let token_len = self.pos - token_start;
+        if (token_len == 3 && self.is_case_insensitive_keyword(token_start, self.pos, "nan"))
+            || (token_len == 8
+                && self.is_case_insensitive_keyword(token_start, self.pos, "infinity"))
         {
             self.output.push_str("null");
             return Ok(true);
@@ -69,21 +71,33 @@ impl JsonRepairer {
     }
 
     fn keyword_replacement(&self, start: usize, end: usize) -> Option<&'static str> {
+        let first_lower = self.chars[start].to_ascii_lowercase();
         match end.saturating_sub(start) {
-            3 if self.is_case_insensitive_keyword(start, end, "nan") => return Some("null"),
+            3 if first_lower == 'n' && self.is_case_insensitive_keyword(start, end, "nan") => {
+                return Some("null");
+            }
             4 => {
-                if self.is_case_insensitive_keyword(start, end, "true") {
+                if first_lower == 't' && self.is_case_insensitive_keyword(start, end, "true") {
                     return Some("true");
                 }
-                if self.is_case_insensitive_keyword(start, end, "null")
-                    || self.is_case_insensitive_keyword(start, end, "none")
+                if first_lower == 'n'
+                    && (self.is_case_insensitive_keyword(start, end, "null")
+                        || self.is_case_insensitive_keyword(start, end, "none"))
                 {
                     return Some("null");
                 }
             }
-            5 if self.is_case_insensitive_keyword(start, end, "false") => return Some("false"),
-            8 if self.is_case_insensitive_keyword(start, end, "infinity") => return Some("null"),
-            9 if self.is_case_insensitive_keyword(start, end, "undefined") => return Some("null"),
+            5 if first_lower == 'f' && self.is_case_insensitive_keyword(start, end, "false") => {
+                return Some("false");
+            }
+            8 if first_lower == 'i' && self.is_case_insensitive_keyword(start, end, "infinity") => {
+                return Some("null");
+            }
+            9 if first_lower == 'u'
+                && self.is_case_insensitive_keyword(start, end, "undefined") =>
+            {
+                return Some("null");
+            }
             _ => {}
         }
         None
