@@ -162,7 +162,7 @@ impl JsonRepairer {
                 if self.peek_at(self.pos + 1) == Some('*') {
                     self.pos += 2;
                     while !self.at_end() {
-                        if self.peek() == Some('*') && self.peek_at(self.pos + 1) == Some('/') {
+                        if self.chars[self.pos] == '*' && self.peek_at(self.pos + 1) == Some('/') {
                             self.pos += 2;
                             break;
                         }
