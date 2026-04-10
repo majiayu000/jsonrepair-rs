@@ -124,6 +124,17 @@ impl JsonRepairer {
         &mut self,
         skip_newline: bool,
     ) -> bool {
+        if self.at_end() {
+            return false;
+        }
+        let c = self.chars[self.pos];
+        if !(matches!(c, ' ' | '\t' | '\r' | '/' | '#')
+            || (skip_newline && c == '\n')
+            || chars::is_special_whitespace(c))
+        {
+            return false;
+        }
+
         let start = self.pos;
         loop {
             while let Some(c) = self.peek() {
@@ -245,6 +256,17 @@ impl JsonRepairer {
     /// Removes a comma only when it's the last non-whitespace output char.
     pub(super) fn strip_trailing_comma(&mut self) {
         let bytes = self.output.as_bytes();
+        if let Some(&last) = bytes.last() {
+            if last == b',' {
+                self.output.pop();
+                return;
+            }
+            if !matches!(last, b' ' | b'\n' | b'\r' | b'\t') {
+                self.strip_last_occurrence(',');
+                return;
+            }
+        }
+
         let mut idx = bytes.len();
         while idx > 0 && matches!(bytes[idx - 1], b' ' | b'\n' | b'\r' | b'\t') {
             idx -= 1;
