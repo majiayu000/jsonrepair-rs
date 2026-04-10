@@ -38,6 +38,7 @@ impl JsonRepairer {
     // repair() and parse_ndjson() are in toplevel.rs
     pub(super) fn parse_value(&mut self) -> Result<bool> {
         self.parse_whitespace_and_comments();
+        let c = self.peek();
         macro_rules! finish {
             ($processed:expr) => {{
                 let processed = $processed;
@@ -46,43 +47,39 @@ impl JsonRepairer {
             }};
         }
 
-        if self.peek() == Some('{') {
+        if c == Some('{') {
             finish!(self.parse_object()?);
         }
-        if self.peek() == Some('[') {
+        if c == Some('[') {
             finish!(self.parse_array()?);
         }
-        if self.peek() == Some('`') && self.matches_at(self.pos, "```") {
+        if c == Some('`') && self.matches_at(self.pos, "```") {
             finish!(self.parse_markdown_fenced()?);
         }
-        if self.peek().is_some_and(chars::is_quote)
-            || (self.peek() == Some('\\')
-                && self.peek_at(self.pos + 1).is_some_and(chars::is_quote))
+        if c.is_some_and(chars::is_quote)
+            || (c == Some('\\') && self.peek_at(self.pos + 1).is_some_and(chars::is_quote))
         {
             finish!(self.parse_string()?);
         }
-        if self.peek() == Some('+') && self.parse_plus_number()? {
+        if c == Some('+') && self.parse_plus_number()? {
             finish!(true);
         }
-        if matches!(self.peek(), Some('+') | Some('-')) && self.parse_signed_keyword()? {
+        if matches!(c, Some('+') | Some('-')) && self.parse_signed_keyword()? {
             finish!(true);
         }
-        if (self.peek().is_some_and(chars::is_number_start)
-            || (self.peek() == Some('.')
-                && self.peek_at(self.pos + 1).is_some_and(chars::is_digit)))
+        if (c.is_some_and(chars::is_number_start)
+            || (c == Some('.') && self.peek_at(self.pos + 1).is_some_and(chars::is_digit)))
             && self.parse_number()?
         {
             finish!(true);
         }
-        if self.peek().is_some_and(chars::is_identifier_start)
-            && self.parse_keyword_or_unquoted()?
-        {
+        if c.is_some_and(chars::is_identifier_start) && self.parse_keyword_or_unquoted()? {
             finish!(true);
         }
         if self.parse_unquoted_string(false)? {
             finish!(true);
         }
-        if self.peek() == Some('/') {
+        if c == Some('/') {
             finish!(self.parse_slash()?);
         }
 
