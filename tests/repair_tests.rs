@@ -371,7 +371,13 @@ fn mongodb_number_long() {
 #[test]
 fn mongodb_new_wrapper_variants() {
     ok(r#"{"_id": new ObjectId("123abc")}"#, r#"{"_id": "123abc"}"#);
+    ok(r#"{"_id": NEW ObjectId("123abc")}"#, r#"{"_id": "123abc"}"#);
     ok(r#"{"count": new NumberLong("42")}"#, r#"{"count": "42"}"#);
+    ok(r#"{"count": NEW numberlong("42")}"#, r#"{"count": "42"}"#);
+    ok(
+        r#"{"created": isodate("2020-01-01")}"#,
+        r#"{"created": "2020-01-01"}"#,
+    );
     ok(r#"{"n": new NumberInt()}"#, r#"{"n": null}"#);
 }
 
@@ -551,6 +557,7 @@ fn comments_after_string_delimiter() {
 fn jsonp_variants() {
     ok("callback_123({});", "{}");
     ok("callback_123([]);", "[]");
+    ok("CALLBACK_123({});", "{}");
     ok("callback({}", "{}");
     ok("/* foo bar */ callback_123 ({})", " {}");
     ok("/* foo bar */ callback_123 (  {}  )", "   {}  ");

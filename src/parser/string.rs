@@ -352,15 +352,15 @@ impl JsonRepairer {
     }
 
     fn is_known_wrapper_function(&self, start: usize, end: usize) -> bool {
-        self.slice_starts_with(start, end, "callback")
-            || self.slice_eq(start, end, "cb")
-            || self.slice_starts_with(start, end, "jsonp")
+        self.slice_starts_with_ignore_ascii_case(start, end, "callback")
+            || self.slice_eq_ignore_ascii_case(start, end, "cb")
+            || self.slice_starts_with_ignore_ascii_case(start, end, "jsonp")
             || self.slice_starts_with(start, end, "jQuery")
-            || self.slice_eq(start, end, "ObjectId")
-            || self.slice_eq(start, end, "NumberLong")
-            || self.slice_eq(start, end, "NumberInt")
-            || self.slice_eq(start, end, "NumberDecimal")
-            || self.slice_eq(start, end, "ISODate")
+            || self.slice_eq_ignore_ascii_case(start, end, "ObjectId")
+            || self.slice_eq_ignore_ascii_case(start, end, "NumberLong")
+            || self.slice_eq_ignore_ascii_case(start, end, "NumberInt")
+            || self.slice_eq_ignore_ascii_case(start, end, "NumberDecimal")
+            || self.slice_eq_ignore_ascii_case(start, end, "ISODate")
     }
 
     /// Parse known JSONP/Mongo wrappers:
@@ -381,7 +381,7 @@ impl JsonRepairer {
         }
 
         // Support `new ObjectId("...")` style wrappers.
-        if self.slice_eq(start, name_end, "new") {
+        if self.slice_eq_ignore_ascii_case(start, name_end, "new") {
             name_start = cursor;
             if !self.peek_at(cursor).is_some_and(chars::is_identifier_start) {
                 self.pos = start;
@@ -433,6 +433,26 @@ impl JsonRepairer {
             .chars()
             .enumerate()
             .all(|(i, c)| self.chars[start + i] == c)
+    }
+
+    fn slice_eq_ignore_ascii_case(&self, start: usize, end: usize, text: &str) -> bool {
+        if end - start != text.len() {
+            return false;
+        }
+        text.chars()
+            .enumerate()
+            .all(|(i, c)| self.chars[start + i].eq_ignore_ascii_case(&c))
+    }
+
+    fn slice_starts_with_ignore_ascii_case(&self, start: usize, end: usize, prefix: &str) -> bool {
+        let prefix_len = prefix.len();
+        if end - start < prefix_len {
+            return false;
+        }
+        prefix
+            .chars()
+            .enumerate()
+            .all(|(i, c)| self.chars[start + i].eq_ignore_ascii_case(&c))
     }
 
     fn insert_before_last_output_whitespace(&mut self, start: usize, text: &str) {
