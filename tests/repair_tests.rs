@@ -370,6 +370,12 @@ fn ellipsis_in_object() {
     ok(r#"{"a": 1, ...}"#, r#"{"a": 1 }"#);
 }
 
+#[test]
+fn many_ellipsis_in_array() {
+    let input = format!("[{}1]", "...,".repeat(2048));
+    ok(&input, "[1]");
+}
+
 // ── 18. BOM handling ─────────────────────────────────────────
 
 #[test]

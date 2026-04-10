@@ -126,46 +126,53 @@ impl JsonRepairer {
         let start = self.pos;
         loop {
             while let Some(c) = self.peek() {
-                let is_ws = if skip_newline {
-                    chars::is_whitespace(c)
-                } else {
-                    chars::is_whitespace_except_newline(c)
-                };
-                if is_ws {
-                    if chars::is_special_whitespace(c) {
-                        self.output.push(' ');
-                    } else {
+                match c {
+                    ' ' | '\t' | '\r' => {
                         self.output.push(c);
+                        self.pos += 1;
                     }
-                    self.pos += 1;
-                } else {
-                    break;
+                    '\n' if skip_newline => {
+                        self.output.push('\n');
+                        self.pos += 1;
+                    }
+                    _ if chars::is_special_whitespace(c) => {
+                        self.output.push(' ');
+                        self.pos += 1;
+                    }
+                    _ => break,
                 }
             }
-            if self.matches_at(self.pos, "//") {
-                self.pos += 2;
-                while self.pos < self.chars.len() && self.chars[self.pos] != '\n' {
-                    self.pos += 1;
-                }
-                continue;
-            }
-            if self.matches_at(self.pos, "/*") {
-                self.pos += 2;
-                while self.pos < self.chars.len() && !self.matches_at(self.pos, "*/") {
-                    self.pos += 1;
-                }
-                if self.matches_at(self.pos, "*/") {
+
+            if self.peek() == Some('/') {
+                if self.peek_at(self.pos + 1) == Some('/') {
                     self.pos += 2;
+                    while self.peek().is_some_and(|c| c != '\n') {
+                        self.pos += 1;
+                    }
+                    continue;
                 }
-                continue;
+
+                if self.peek_at(self.pos + 1) == Some('*') {
+                    self.pos += 2;
+                    while !self.at_end() {
+                        if self.peek() == Some('*') && self.peek_at(self.pos + 1) == Some('/') {
+                            self.pos += 2;
+                            break;
+                        }
+                        self.pos += 1;
+                    }
+                    continue;
+                }
             }
+
             if self.peek() == Some('#') {
                 self.pos += 1;
-                while self.pos < self.chars.len() && self.chars[self.pos] != '\n' {
+                while self.peek().is_some_and(|c| c != '\n') {
                     self.pos += 1;
                 }
                 continue;
             }
+
             break;
         }
         self.pos > start

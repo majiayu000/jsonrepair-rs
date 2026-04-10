@@ -137,12 +137,6 @@ pub fn is_whitespace(c: char) -> bool {
     c.is_ascii_whitespace() || is_special_whitespace(c)
 }
 
-/// Check if a character is whitespace except a newline.
-#[inline]
-pub fn is_whitespace_except_newline(c: char) -> bool {
-    matches!(c, ' ' | '\t' | '\r') || is_special_whitespace(c)
-}
-
 /// Check if a character is a valid start of an unquoted string
 /// that looks like an identifier (letter or underscore).
 #[inline]

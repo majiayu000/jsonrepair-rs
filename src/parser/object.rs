@@ -109,17 +109,20 @@ impl JsonRepairer {
 
     /// Parse and skip `...` (ellipsis), returning true if found.
     pub(super) fn parse_skip_ellipsis(&mut self) -> bool {
-        self.parse_whitespace_and_comments();
-        if self.peek() == Some('.') && self.matches_at(self.pos, "...") {
+        let mut processed = false;
+        loop {
+            self.parse_whitespace_and_comments();
+            if self.peek() != Some('.') || !self.matches_at(self.pos, "...") {
+                break;
+            }
+
+            processed = true;
             self.pos += 3;
             self.parse_whitespace_and_comments();
             if self.peek() == Some(',') {
                 self.pos += 1;
             }
-            self.parse_skip_ellipsis();
-            true
-        } else {
-            false
         }
+        processed
     }
 }
