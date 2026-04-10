@@ -59,9 +59,11 @@ impl JsonRepairer {
                 return Ok(true);
             }
 
-            if stop_at_index.is_some_and(|idx| self.pos == idx) {
-                self.insert_before_last_output_whitespace(output_start + 1, "\"");
-                return Ok(true);
+            if let Some(idx) = stop_at_index {
+                if self.pos == idx {
+                    self.insert_before_last_output_whitespace(output_start + 1, "\"");
+                    return Ok(true);
+                }
             }
 
             let c = self.chars[self.pos];
