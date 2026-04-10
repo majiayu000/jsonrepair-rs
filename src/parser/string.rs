@@ -137,7 +137,6 @@ impl JsonRepairer {
     }
 
     fn parse_string_escape(&mut self) -> Result<()> {
-        let backslash_pos = self.pos;
         self.pos += 1; // skip '\'
         let esc = match self.peek() {
             Some(c) => c,
@@ -146,18 +145,16 @@ impl JsonRepairer {
             }
         };
 
+        if matches!(esc, '"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't') {
+            self.output.push('\\');
+            self.output.push(esc);
+            self.pos += 1;
+            return Ok(());
+        }
+
         match esc {
-            '"' | '\\' | '/' => {
-                self.output.push('\\');
-                self.output.push(esc);
-                self.pos += 1;
-            }
-            'b' | 'f' | 'n' | 'r' | 't' => {
-                self.output.push('\\');
-                self.output.push(esc);
-                self.pos += 1;
-            }
             'u' => {
+                let backslash_pos = self.pos.saturating_sub(1);
                 let mut digits = 0;
                 while digits < 4
                     && self
