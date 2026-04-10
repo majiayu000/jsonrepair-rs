@@ -146,6 +146,28 @@ pre-commit run --all-files
 cargo bench
 ```
 
+### Optimization Round Automation
+
+Use this script to run one full optimization validation round with automatic gating:
+
+```bash
+# Compare against an existing Criterion baseline
+scripts/opt_round.sh --baseline current_bec2481
+```
+
+Default gate policy:
+- fail if any benchmark is statistically regressed (mean CI lower bound > 0)
+- allow unchanged benchmarks
+
+Strict mode (all benchmarks must improve):
+
+```bash
+scripts/opt_round.sh --baseline current_bec2481 --require-all-improved
+```
+
+The script writes a per-round report to:
+- `.omx/reports/opt-round-<timestamp>.md`
+
 ## Acknowledgments
 
 This is a Rust port of [jsonrepair](https://github.com/josdejong/jsonrepair) by Jos de Jong.
