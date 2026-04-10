@@ -147,9 +147,7 @@ impl JsonRepairer {
             if self.peek() == Some('/') {
                 if self.peek_at(self.pos + 1) == Some('/') {
                     self.pos += 2;
-                    while self.peek().is_some_and(|c| c != '\n') {
-                        self.pos += 1;
-                    }
+                    self.skip_until_newline();
                     continue;
                 }
 
@@ -168,9 +166,7 @@ impl JsonRepairer {
 
             if self.peek() == Some('#') {
                 self.pos += 1;
-                while self.peek().is_some_and(|c| c != '\n') {
-                    self.pos += 1;
-                }
+                self.skip_until_newline();
                 continue;
             }
 
@@ -216,6 +212,14 @@ impl JsonRepairer {
             true
         } else {
             false
+        }
+    }
+
+    /// Advance cursor until newline or end of input.
+    #[inline(always)]
+    pub(super) fn skip_until_newline(&mut self) {
+        while self.pos < self.chars.len() && self.chars[self.pos] != '\n' {
+            self.pos += 1;
         }
     }
 
