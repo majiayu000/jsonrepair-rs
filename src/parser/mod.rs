@@ -127,7 +127,7 @@ impl JsonRepairer {
         let c = self.chars[self.pos];
         if !(matches!(c, ' ' | '\t' | '\r' | '/' | '#')
             || (skip_newline && c == '\n')
-            || chars::is_special_whitespace(c))
+            || (!c.is_ascii() && chars::is_special_whitespace(c)))
         {
             return false;
         }
@@ -144,7 +144,7 @@ impl JsonRepairer {
                         self.output.push('\n');
                         self.pos += 1;
                     }
-                    _ if chars::is_special_whitespace(c) => {
+                    _ if !c.is_ascii() && chars::is_special_whitespace(c) => {
                         self.output.push(' ');
                         self.pos += 1;
                     }
