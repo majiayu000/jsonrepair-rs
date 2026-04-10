@@ -273,6 +273,8 @@ fn signed_non_finite_numbers() {
     ok("-NaN", "null");
     ok("+NaN", "null");
     ok(r#"{"x":-Infinity,"y":+NaN}"#, r#"{"x":null,"y":null}"#);
+    ok("-Infinity;", "null");
+    ok("+NaN;", "null");
 }
 
 // ── 12. Truncated JSON ───────────────────────────────────────
@@ -380,6 +382,8 @@ fn jsonp_callback() {
 #[test]
 fn trailing_semicolon() {
     ok(r#"{"a": 1};"#, r#"{"a": 1}"#);
+    ok("1;", "1");
+    ok("2e+;", "2e+0");
 }
 
 // ── 17. Ellipsis ─────────────────────────────────────────────

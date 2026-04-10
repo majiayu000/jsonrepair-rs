@@ -54,7 +54,7 @@ pub fn is_single_quote(c: char) -> bool {
 /// Check if a character ends an unquoted string.
 #[inline]
 pub fn is_unquoted_string_delimiter(c: char) -> bool {
-    matches!(c, ',' | '[' | ']' | '/' | '{' | '}' | '\n' | '+')
+    matches!(c, ',' | '[' | ']' | '/' | '{' | '}' | '\n' | '+' | ';')
 }
 
 /// Check if a character is a generic JSON delimiter.
@@ -62,7 +62,7 @@ pub fn is_unquoted_string_delimiter(c: char) -> bool {
 pub fn is_delimiter(c: char) -> bool {
     matches!(
         c,
-        ',' | ':' | '[' | ']' | '/' | '{' | '}' | '(' | ')' | '\n' | '+'
+        ',' | ':' | '[' | ']' | '/' | '{' | '}' | '(' | ')' | '\n' | '+' | ';'
     )
 }
 

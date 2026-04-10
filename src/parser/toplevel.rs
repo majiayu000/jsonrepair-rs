@@ -39,7 +39,7 @@ impl JsonRepairer {
             self.parse_ndjson()?;
         } else if processed_comma {
             // Remove trailing comma after a single root value.
-            self.strip_last_occurrence(',');
+            self.strip_trailing_comma();
         }
 
         // Repair redundant closing brackets at the root level.
@@ -81,7 +81,7 @@ impl JsonRepairer {
         }
 
         if !processed_value {
-            self.strip_last_occurrence(',');
+            self.strip_trailing_comma();
         }
 
         self.output.insert_str(0, "[\n");

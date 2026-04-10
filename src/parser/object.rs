@@ -41,7 +41,7 @@ impl JsonRepairer {
                     || matches!(self.peek(), Some('}') | Some('{') | Some(']') | Some('['));
                 if near_end {
                     // Trailing comma.
-                    self.strip_last_occurrence(',');
+                    self.strip_trailing_comma();
                 } else {
                     return Err(self.error_kind(
                         "Object key expected",

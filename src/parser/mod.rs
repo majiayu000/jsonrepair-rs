@@ -244,6 +244,23 @@ impl JsonRepairer {
         }
     }
 
+    /// Fast path for the common trailing-comma rollback case.
+    /// Removes a comma only when it's the last non-whitespace output char.
+    pub(super) fn strip_trailing_comma(&mut self) {
+        let bytes = self.output.as_bytes();
+        let mut idx = bytes.len();
+        while idx > 0 && matches!(bytes[idx - 1], b' ' | b'\n' | b'\r' | b'\t') {
+            idx -= 1;
+        }
+
+        if idx > 0 && bytes[idx - 1] == b',' {
+            self.output.remove(idx - 1);
+            return;
+        }
+
+        self.strip_last_occurrence(',');
+    }
+
     /// Insert `text` before any trailing whitespace in the output buffer.
     pub(super) fn insert_before_last_whitespace(&mut self, text: &str) {
         let bytes = self.output.as_bytes();

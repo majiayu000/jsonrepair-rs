@@ -34,7 +34,7 @@ impl JsonRepairer {
             let processed_value = self.parse_value()?;
             if !processed_value {
                 // Trailing comma or truncated input.
-                self.strip_last_occurrence(',');
+                self.strip_trailing_comma();
                 break;
             }
         }
