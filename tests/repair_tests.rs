@@ -319,6 +319,14 @@ fn negative_number() {
     ok("-42", "-42");
 }
 
+#[test]
+fn leading_dot_numbers() {
+    ok(".5", "0.5");
+    ok("-.5", "-0.5");
+    ok("[.5e2, -.5e-1]", "[0.5e2, -0.5e-1]");
+    ok("{value: .25}", "{\"value\": 0.25}");
+}
+
 // ── 15. MongoDB constructors ─────────────────────────────────
 
 #[test]

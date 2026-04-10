@@ -8,32 +8,58 @@ impl JsonRepairer {
     pub(super) fn parse_number(&mut self) -> Result<bool> {
         let start = self.pos;
         let mut append_trailing_zero = false;
+        let mut has_leading_dot = false;
+        let mut has_invalid_leading_zero = false;
 
         if self.peek() == Some('-') {
             self.pos += 1;
             if self.at_end_of_number() {
                 append_trailing_zero = true;
-            } else if !self.peek().is_some_and(chars::is_digit) {
+            } else if !(self.peek().is_some_and(chars::is_digit)
+                || (self.peek() == Some('.')
+                    && self.peek_at(self.pos + 1).is_some_and(chars::is_digit)))
+            {
                 self.pos = start;
                 return Ok(false);
             }
         }
 
         if !append_trailing_zero {
-            while self.peek().is_some_and(chars::is_digit) {
-                self.pos += 1;
-            }
-
             if self.peek() == Some('.') {
+                has_leading_dot = true;
                 self.pos += 1;
-                if self.at_end_of_number() {
-                    append_trailing_zero = true;
-                } else if !self.peek().is_some_and(chars::is_digit) {
-                    self.pos = start;
-                    return Ok(false);
-                } else {
-                    while self.peek().is_some_and(chars::is_digit) {
+
+                while self.peek().is_some_and(chars::is_digit) {
+                    self.pos += 1;
+                }
+            } else {
+                let mut integer_digits = 0usize;
+                let mut first_integer_digit = '\0';
+                while let Some(c) = self.peek() {
+                    if chars::is_digit(c) {
+                        if integer_digits == 0 {
+                            first_integer_digit = c;
+                        } else if integer_digits == 1 && first_integer_digit == '0' {
+                            has_invalid_leading_zero = true;
+                        }
+                        integer_digits += 1;
                         self.pos += 1;
+                    } else {
+                        break;
+                    }
+                }
+
+                if self.peek() == Some('.') {
+                    self.pos += 1;
+                    if self.at_end_of_number() {
+                        append_trailing_zero = true;
+                    } else if !self.peek().is_some_and(chars::is_digit) {
+                        self.pos = start;
+                        return Ok(false);
+                    } else {
+                        while self.peek().is_some_and(chars::is_digit) {
+                            self.pos += 1;
+                        }
                     }
                 }
             }
@@ -63,7 +89,13 @@ impl JsonRepairer {
         }
 
         if self.pos > start {
-            self.push_number_to_output(start, self.pos, append_trailing_zero);
+            self.push_number_to_output(
+                start,
+                self.pos,
+                append_trailing_zero,
+                has_invalid_leading_zero,
+                has_leading_dot,
+            );
             return Ok(true);
         }
 
@@ -71,8 +103,15 @@ impl JsonRepairer {
     }
 
     #[inline(always)]
-    fn push_number_to_output(&mut self, start: usize, end: usize, append_trailing_zero: bool) {
-        if self.has_invalid_leading_zero(start, end) {
+    fn push_number_to_output(
+        &mut self,
+        start: usize,
+        end: usize,
+        append_trailing_zero: bool,
+        has_invalid_leading_zero: bool,
+        has_leading_dot: bool,
+    ) {
+        if has_invalid_leading_zero {
             self.output.push('"');
             self.push_slice_to_output(start, end);
             if append_trailing_zero {
@@ -82,30 +121,23 @@ impl JsonRepairer {
             return;
         }
 
-        self.push_slice_to_output(start, end);
+        if has_leading_dot {
+            if self.peek_at(start) == Some('-') {
+                self.output.push('-');
+                self.output.push('0');
+                self.output.push('.');
+                self.push_slice_to_output(start + 2, end);
+            } else {
+                self.output.push('0');
+                self.output.push('.');
+                self.push_slice_to_output(start + 1, end);
+            }
+        } else {
+            self.push_slice_to_output(start, end);
+        }
         if append_trailing_zero {
             self.output.push('0');
         }
-    }
-
-    #[inline(always)]
-    fn has_invalid_leading_zero(&self, start: usize, end: usize) -> bool {
-        let integer_start = if self.peek_at(start) == Some('-') {
-            start + 1
-        } else {
-            start
-        };
-
-        if integer_start >= end || !self.chars[integer_start].is_ascii_digit() {
-            return false;
-        }
-
-        let mut integer_end = integer_start;
-        while integer_end < end && self.chars[integer_end].is_ascii_digit() {
-            integer_end += 1;
-        }
-
-        integer_end > integer_start + 1 && self.chars[integer_start] == '0'
     }
 
     #[inline(always)]
