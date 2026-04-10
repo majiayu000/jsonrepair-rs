@@ -272,7 +272,10 @@ fn signed_non_finite_numbers() {
     ok("+Infinity", "null");
     ok("-NaN", "null");
     ok("+NaN", "null");
+    ok("- Infinity", "null");
+    ok("+\tInfinity", "null");
     ok(r#"{"x":-Infinity,"y":+NaN}"#, r#"{"x":null,"y":null}"#);
+    ok(r#"{"x":- Infinity}"#, r#"{"x":null}"#);
     ok("-Infinity;", "null");
     ok("+NaN;", "null");
 }
