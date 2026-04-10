@@ -35,7 +35,9 @@ impl JsonRepairer {
         }
 
         self.pos += 1;
-        while self.peek().is_some_and(|c| matches!(c, ' ' | '\t' | '\r')) {
+        while self.peek().is_some_and(|c| {
+            matches!(c, ' ' | '\t' | '\r') || (c != '\n' && chars::is_special_whitespace(c))
+        }) {
             self.pos += 1;
         }
         if !self.peek().is_some_and(chars::is_identifier_start) {

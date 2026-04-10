@@ -270,7 +270,11 @@ impl JsonRepairer {
     pub(super) fn parse_unquoted_string(&mut self, is_key: bool) -> Result<bool> {
         let start = self.pos;
 
-        if self.peek().is_some_and(chars::is_identifier_start) && self.parse_known_wrapper_call()? {
+        if !is_key
+            && self.peek().is_some_and(chars::is_identifier_start)
+            && self.maybe_known_wrapper_start()
+            && self.parse_known_wrapper_call()?
+        {
             return Ok(true);
         }
 
@@ -361,6 +365,14 @@ impl JsonRepairer {
             || self.slice_eq_ignore_ascii_case(start, end, "NumberInt")
             || self.slice_eq_ignore_ascii_case(start, end, "NumberDecimal")
             || self.slice_eq_ignore_ascii_case(start, end, "ISODate")
+    }
+
+    #[inline(always)]
+    fn maybe_known_wrapper_start(&self) -> bool {
+        match self.peek() {
+            Some(c) => matches!(c, 'c' | 'C' | 'j' | 'J' | 'o' | 'O' | 'n' | 'N' | 'i' | 'I'),
+            None => false,
+        }
     }
 
     /// Parse known JSONP/Mongo wrappers:
