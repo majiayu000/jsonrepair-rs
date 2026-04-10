@@ -4,6 +4,7 @@ use super::JsonRepairer;
 use super::Result;
 
 impl JsonRepairer {
+    #[inline(always)]
     pub(super) fn parse_number(&mut self) -> Result<bool> {
         let start = self.pos;
         let mut append_trailing_zero = false;
@@ -69,6 +70,7 @@ impl JsonRepairer {
         Ok(false)
     }
 
+    #[inline(always)]
     fn push_number_to_output(&mut self, start: usize, end: usize, append_trailing_zero: bool) {
         if self.has_invalid_leading_zero(start, end) {
             self.output.push('"');
@@ -86,6 +88,7 @@ impl JsonRepairer {
         }
     }
 
+    #[inline(always)]
     fn has_invalid_leading_zero(&self, start: usize, end: usize) -> bool {
         let integer_start = if self.peek_at(start) == Some('-') {
             start + 1
@@ -105,6 +108,7 @@ impl JsonRepairer {
         integer_end > integer_start + 1 && self.chars[integer_start] == '0'
     }
 
+    #[inline(always)]
     fn at_end_of_number(&self) -> bool {
         match self.peek() {
             None => true,
