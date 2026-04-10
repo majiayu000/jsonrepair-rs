@@ -57,11 +57,15 @@ impl JsonRepairer {
             || (self.peek() == Some('\\')
                 && self.peek_at(self.pos + 1).is_some_and(chars::is_quote))
         {
-            let processed = self.parse_string(false)?;
+            let processed = self.parse_string()?;
             self.parse_whitespace_and_comments();
             return Ok(processed);
         }
         if self.peek() == Some('+') && self.parse_plus_number()? {
+            self.parse_whitespace_and_comments();
+            return Ok(true);
+        }
+        if matches!(self.peek(), Some('+') | Some('-')) && self.parse_signed_keyword()? {
             self.parse_whitespace_and_comments();
             return Ok(true);
         }
@@ -184,24 +188,25 @@ impl JsonRepairer {
 
     // ── Helpers ─────────────────────────────────────────────
 
-    #[inline]
+    #[inline(always)]
     pub(super) fn peek(&self) -> Option<char> {
         self.chars.get(self.pos).copied()
     }
 
-    #[inline]
+    #[inline(always)]
     pub(super) fn at_end(&self) -> bool {
         self.pos >= self.chars.len()
     }
 
-    #[inline]
+    #[inline(always)]
     pub(super) fn peek_at(&self, idx: usize) -> Option<char> {
         self.chars.get(idx).copied()
     }
 
     /// If next char equals `c`, copy it to output and advance. Returns true if matched.
+    #[inline(always)]
     pub(super) fn parse_char(&mut self, c: char) -> bool {
-        if self.peek() == Some(c) {
+        if self.pos < self.chars.len() && self.chars[self.pos] == c {
             self.output.push(c);
             self.pos += 1;
             true
@@ -211,8 +216,9 @@ impl JsonRepairer {
     }
 
     /// If next char equals `c`, advance without copying to output.
+    #[inline(always)]
     pub(super) fn skip_char(&mut self, c: char) -> bool {
-        if self.peek() == Some(c) {
+        if self.pos < self.chars.len() && self.chars[self.pos] == c {
             self.pos += 1;
             true
         } else {

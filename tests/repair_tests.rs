@@ -241,6 +241,14 @@ fn python_keywords_in_object() {
     );
 }
 
+#[test]
+fn case_insensitive_keywords() {
+    ok("TRUE", "true");
+    ok("FALSE", "false");
+    ok("NULL", "null");
+    ok("undefined", "null");
+}
+
 // ── 11. JavaScript keywords ──────────────────────────────────
 
 #[test]
@@ -256,6 +264,15 @@ fn js_nan() {
 #[test]
 fn js_infinity() {
     ok("Infinity", "null");
+}
+
+#[test]
+fn signed_non_finite_numbers() {
+    ok("-Infinity", "null");
+    ok("+Infinity", "null");
+    ok("-NaN", "null");
+    ok("+NaN", "null");
+    ok(r#"{"x":-Infinity,"y":+NaN}"#, r#"{"x":null,"y":null}"#);
 }
 
 // ── 12. Truncated JSON ───────────────────────────────────────
@@ -344,6 +361,13 @@ fn mongodb_object_id() {
 #[test]
 fn mongodb_number_long() {
     ok(r#"{"count": NumberLong("42")}"#, r#"{"count": "42"}"#);
+}
+
+#[test]
+fn mongodb_new_wrapper_variants() {
+    ok(r#"{"_id": new ObjectId("123abc")}"#, r#"{"_id": "123abc"}"#);
+    ok(r#"{"count": new NumberLong("42")}"#, r#"{"count": "42"}"#);
+    ok(r#"{"n": new NumberInt()}"#, r#"{"n": null}"#);
 }
 
 // ── 16. JSONP ────────────────────────────────────────────────

@@ -101,7 +101,7 @@ impl JsonRepairer {
     }
 
     fn parse_object_key(&mut self) -> Result<bool> {
-        if self.parse_string(false)? {
+        if self.parse_string()? {
             return Ok(true);
         }
         self.parse_unquoted_string(true)

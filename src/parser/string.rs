@@ -5,8 +5,8 @@ use super::JsonRepairer;
 use super::Result;
 
 impl JsonRepairer {
-    /// Parse a string value. If `is_key` is true, context is an object key.
-    pub(super) fn parse_string(&mut self, _is_key: bool) -> Result<bool> {
+    /// Parse a quoted string value.
+    pub(super) fn parse_string(&mut self) -> Result<bool> {
         self.parse_string_internal(false, None)
     }
 
@@ -252,7 +252,7 @@ impl JsonRepairer {
                 self.output.truncate(idx);
             }
             let second_start = self.output.len();
-            if self.parse_string(false)? {
+            if self.parse_string()? {
                 // Remove start quote from second string.
                 if second_start < self.output.len() {
                     self.output.remove(second_start);
@@ -270,29 +270,8 @@ impl JsonRepairer {
     pub(super) fn parse_unquoted_string(&mut self, is_key: bool) -> Result<bool> {
         let start = self.pos;
 
-        if self.peek().is_some_and(chars::is_identifier_start) {
-            while self.peek().is_some_and(chars::is_identifier_char) {
-                self.pos += 1;
-            }
-            let identifier_end = self.pos;
-
-            let mut j = self.pos;
-            while self.peek_at(j).is_some_and(chars::is_whitespace) {
-                j += 1;
-            }
-            if self.peek_at(j) == Some('(') && self.is_known_wrapper_function(start, identifier_end)
-            {
-                // MongoDB and JSONP style wrapper function.
-                self.pos = j + 1;
-                let _ = self.parse_value()?;
-                if self.peek() == Some(')') {
-                    self.pos += 1;
-                    if self.peek() == Some(';') {
-                        self.pos += 1;
-                    }
-                }
-                return Ok(true);
-            }
+        if self.peek().is_some_and(chars::is_identifier_start) && self.parse_known_wrapper_call()? {
+            return Ok(true);
         }
 
         let mut parenthesis_depth = 0usize;
@@ -382,6 +361,67 @@ impl JsonRepairer {
             || self.slice_eq(start, end, "NumberInt")
             || self.slice_eq(start, end, "NumberDecimal")
             || self.slice_eq(start, end, "ISODate")
+    }
+
+    /// Parse known JSONP/Mongo wrappers:
+    /// - callback(...)
+    /// - ObjectId(...)
+    /// - new ObjectId(...)
+    fn parse_known_wrapper_call(&mut self) -> Result<bool> {
+        let start = self.pos;
+        while self.peek().is_some_and(chars::is_identifier_char) {
+            self.pos += 1;
+        }
+
+        let mut name_start = start;
+        let mut name_end = self.pos;
+        let mut cursor = self.pos;
+        while self.peek_at(cursor).is_some_and(chars::is_whitespace) {
+            cursor += 1;
+        }
+
+        // Support `new ObjectId("...")` style wrappers.
+        if self.slice_eq(start, name_end, "new") {
+            name_start = cursor;
+            if !self.peek_at(cursor).is_some_and(chars::is_identifier_start) {
+                self.pos = start;
+                return Ok(false);
+            }
+            while self.peek_at(cursor).is_some_and(chars::is_identifier_char) {
+                cursor += 1;
+            }
+            name_end = cursor;
+            while self.peek_at(cursor).is_some_and(chars::is_whitespace) {
+                cursor += 1;
+            }
+        }
+
+        if self.peek_at(cursor) != Some('(')
+            || !self.is_known_wrapper_function(name_start, name_end)
+        {
+            self.pos = start;
+            return Ok(false);
+        }
+
+        self.pos = cursor + 1;
+        self.parse_whitespace_and_comments();
+        if self.peek() == Some(')') {
+            self.output.push_str("null");
+        } else {
+            let value_parsed = self.parse_value()?;
+            if !value_parsed {
+                self.output.push_str("null");
+            }
+        }
+
+        if self.peek() == Some(')') {
+            self.pos += 1;
+            if self.peek() == Some(';') {
+                self.pos += 1;
+            }
+        }
+
+        Ok(true)
     }
 
     fn slice_starts_with(&self, start: usize, end: usize, prefix: &str) -> bool {
