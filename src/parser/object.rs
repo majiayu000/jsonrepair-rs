@@ -33,7 +33,9 @@ impl JsonRepairer {
                 initial = false;
             }
 
-            self.parse_skip_ellipsis();
+            if self.peek() == Some('.') {
+                self.parse_skip_ellipsis();
+            }
 
             let processed_key = self.parse_object_key()?;
             if !processed_key {

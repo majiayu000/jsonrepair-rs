@@ -1,3 +1,5 @@
+use crate::chars;
+
 use super::JsonRepairer;
 use super::Result;
 
@@ -29,7 +31,12 @@ impl JsonRepairer {
                 initial = false;
             }
 
-            self.parse_skip_ellipsis();
+            if self
+                .peek()
+                .is_some_and(|c| c == '.' || c == '/' || c == '#' || chars::is_whitespace(c))
+            {
+                self.parse_skip_ellipsis();
+            }
 
             let processed_value = self.parse_value()?;
             if !processed_value {
