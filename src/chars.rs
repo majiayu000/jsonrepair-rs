@@ -69,7 +69,7 @@ pub fn is_delimiter(c: char) -> bool {
 /// Check whether a character can start a JSON value.
 #[inline]
 pub fn is_start_of_value(c: char) -> bool {
-    is_quote(c) || matches!(c, '[' | '{' | '-' | '_') || c.is_ascii_alphanumeric()
+    is_quote(c) || matches!(c, '[' | '{' | '-' | '+' | '.' | '_') || c.is_ascii_alphanumeric()
 }
 
 /// Characters that can occur in a URL.
