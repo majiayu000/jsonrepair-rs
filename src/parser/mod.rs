@@ -38,59 +38,52 @@ impl JsonRepairer {
     // repair() and parse_ndjson() are in toplevel.rs
     pub(super) fn parse_value(&mut self) -> Result<bool> {
         self.parse_whitespace_and_comments();
+        macro_rules! finish {
+            ($processed:expr) => {{
+                let processed = $processed;
+                self.parse_whitespace_and_comments();
+                return Ok(processed);
+            }};
+        }
+
         if self.peek() == Some('{') {
-            let processed = self.parse_object()?;
-            self.parse_whitespace_and_comments();
-            return Ok(processed);
+            finish!(self.parse_object()?);
         }
         if self.peek() == Some('[') {
-            let processed = self.parse_array()?;
-            self.parse_whitespace_and_comments();
-            return Ok(processed);
+            finish!(self.parse_array()?);
         }
         if self.peek() == Some('`') && self.matches_at(self.pos, "```") {
-            let processed = self.parse_markdown_fenced()?;
-            self.parse_whitespace_and_comments();
-            return Ok(processed);
+            finish!(self.parse_markdown_fenced()?);
         }
         if self.peek().is_some_and(chars::is_quote)
             || (self.peek() == Some('\\')
                 && self.peek_at(self.pos + 1).is_some_and(chars::is_quote))
         {
-            let processed = self.parse_string()?;
-            self.parse_whitespace_and_comments();
-            return Ok(processed);
+            finish!(self.parse_string()?);
         }
         if self.peek() == Some('+') && self.parse_plus_number()? {
-            self.parse_whitespace_and_comments();
-            return Ok(true);
+            finish!(true);
         }
         if matches!(self.peek(), Some('+') | Some('-')) && self.parse_signed_keyword()? {
-            self.parse_whitespace_and_comments();
-            return Ok(true);
+            finish!(true);
         }
         if (self.peek().is_some_and(chars::is_number_start)
             || (self.peek() == Some('.')
                 && self.peek_at(self.pos + 1).is_some_and(chars::is_digit)))
             && self.parse_number()?
         {
-            self.parse_whitespace_and_comments();
-            return Ok(true);
+            finish!(true);
         }
         if self.peek().is_some_and(chars::is_identifier_start)
             && self.parse_keyword_or_unquoted()?
         {
-            self.parse_whitespace_and_comments();
-            return Ok(true);
+            finish!(true);
         }
         if self.parse_unquoted_string(false)? {
-            self.parse_whitespace_and_comments();
-            return Ok(true);
+            finish!(true);
         }
         if self.peek() == Some('/') {
-            let processed = self.parse_slash()?;
-            self.parse_whitespace_and_comments();
-            return Ok(processed);
+            finish!(self.parse_slash()?);
         }
 
         self.parse_whitespace_and_comments();
