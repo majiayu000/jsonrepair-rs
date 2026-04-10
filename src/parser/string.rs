@@ -205,6 +205,12 @@ impl JsonRepairer {
     }
 
     fn parse_string_char(&mut self, c: char) -> Result<()> {
+        if c >= '\u{0020}' && c != '"' && c != '\\' {
+            self.output.push(c);
+            self.pos += 1;
+            return Ok(());
+        }
+
         if c == '"' {
             self.output.push_str("\\\"");
             self.pos += 1;

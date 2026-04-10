@@ -264,6 +264,11 @@ impl JsonRepairer {
 
     /// Push a char to output, escaping it for JSON strings.
     pub(super) fn push_string_char(&mut self, c: char) {
+        if c >= '\u{0020}' && c != '"' && c != '\\' {
+            self.output.push(c);
+            return;
+        }
+
         match c {
             '"' => self.output.push_str("\\\""),
             '\\' => self.output.push_str("\\\\"),
