@@ -65,19 +65,22 @@ impl JsonRepairer {
     }
 
     fn keyword_replacement(&self, start: usize, end: usize) -> Option<&'static str> {
-        if self.is_case_insensitive_keyword(start, end, "true") {
-            return Some("true");
-        }
-        if self.is_case_insensitive_keyword(start, end, "false") {
-            return Some("false");
-        }
-        if self.is_case_insensitive_keyword(start, end, "null")
-            || self.is_case_insensitive_keyword(start, end, "none")
-            || self.is_case_insensitive_keyword(start, end, "undefined")
-            || self.is_case_insensitive_keyword(start, end, "nan")
-            || self.is_case_insensitive_keyword(start, end, "infinity")
-        {
-            return Some("null");
+        match end.saturating_sub(start) {
+            3 if self.is_case_insensitive_keyword(start, end, "nan") => return Some("null"),
+            4 => {
+                if self.is_case_insensitive_keyword(start, end, "true") {
+                    return Some("true");
+                }
+                if self.is_case_insensitive_keyword(start, end, "null")
+                    || self.is_case_insensitive_keyword(start, end, "none")
+                {
+                    return Some("null");
+                }
+            }
+            5 if self.is_case_insensitive_keyword(start, end, "false") => return Some("false"),
+            8 if self.is_case_insensitive_keyword(start, end, "infinity") => return Some("null"),
+            9 if self.is_case_insensitive_keyword(start, end, "undefined") => return Some("null"),
+            _ => {}
         }
         None
     }
