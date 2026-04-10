@@ -153,16 +153,19 @@ impl JsonRepairer {
             }
 
             if self.peek() == Some('/') {
-                if self.peek_at(self.pos + 1) == Some('/') {
+                if self.pos + 1 < self.chars.len() && self.chars[self.pos + 1] == '/' {
                     self.pos += 2;
                     self.skip_until_newline();
                     continue;
                 }
 
-                if self.peek_at(self.pos + 1) == Some('*') {
+                if self.pos + 1 < self.chars.len() && self.chars[self.pos + 1] == '*' {
                     self.pos += 2;
                     while !self.at_end() {
-                        if self.chars[self.pos] == '*' && self.peek_at(self.pos + 1) == Some('/') {
+                        if self.chars[self.pos] == '*'
+                            && self.pos + 1 < self.chars.len()
+                            && self.chars[self.pos + 1] == '/'
+                        {
                             self.pos += 2;
                             break;
                         }
