@@ -25,14 +25,14 @@ impl JsonRepairer {
             Some(c) if chars::is_quote(c) => c,
             _ => return Ok(false),
         };
-        let is_end_quote: fn(char) -> bool = if chars::is_double_quote(quote) {
-            chars::is_double_quote
+        let quote_kind = if chars::is_double_quote(quote) {
+            0u8
         } else if chars::is_single_quote(quote) {
-            chars::is_single_quote
+            1u8
         } else if chars::is_single_quote_like(quote) {
-            chars::is_single_quote_like
+            2u8
         } else {
-            chars::is_double_quote_like
+            3u8
         };
 
         let input_start = self.pos;
@@ -65,7 +65,13 @@ impl JsonRepairer {
             }
 
             let c = self.chars[self.pos];
-            if is_end_quote(c) {
+            let is_end_quote = match quote_kind {
+                0 => chars::is_double_quote(c),
+                1 => chars::is_single_quote(c),
+                2 => chars::is_single_quote_like(c),
+                _ => chars::is_double_quote_like(c),
+            };
+            if is_end_quote {
                 let quote_pos = self.pos;
                 let quote_output_pos = self.output.len();
                 self.output.push('"');
