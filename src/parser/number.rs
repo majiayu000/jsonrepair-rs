@@ -5,6 +5,25 @@ use super::Result;
 
 impl JsonRepairer {
     #[inline(always)]
+    pub(super) fn parse_plus_number(&mut self) -> Result<bool> {
+        if self.peek() != Some('+') {
+            return Ok(false);
+        }
+
+        let token_start = self.pos;
+        let output_start = self.output.len();
+        self.pos += 1;
+
+        if self.parse_number()? {
+            return Ok(true);
+        }
+
+        self.pos = token_start;
+        self.output.truncate(output_start);
+        Ok(false)
+    }
+
+    #[inline(always)]
     pub(super) fn parse_number(&mut self) -> Result<bool> {
         let start = self.pos;
         let mut append_trailing_zero = false;

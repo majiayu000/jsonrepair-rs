@@ -320,6 +320,13 @@ fn negative_number() {
 }
 
 #[test]
+fn plus_prefixed_numbers() {
+    ok("+42", "42");
+    ok("[+1,+2,+3]", "[1,2,3]");
+    ok("{value:+.5}", "{\"value\":0.5}");
+}
+
+#[test]
 fn leading_dot_numbers() {
     ok(".5", "0.5");
     ok("-.5", "-0.5");

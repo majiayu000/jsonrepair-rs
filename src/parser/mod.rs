@@ -61,6 +61,10 @@ impl JsonRepairer {
             self.parse_whitespace_and_comments();
             return Ok(processed);
         }
+        if self.peek() == Some('+') && self.parse_plus_number()? {
+            self.parse_whitespace_and_comments();
+            return Ok(true);
+        }
         if (self.peek().is_some_and(chars::is_number_start)
             || (self.peek() == Some('.')
                 && self.peek_at(self.pos + 1).is_some_and(chars::is_digit)))
