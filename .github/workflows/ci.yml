@@ -13,9 +13,12 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - run: RUSTFLAGS="-Dwarnings" cargo check --all-targets
       - run: cargo fmt --all -- --check
       - run: cargo test
+        env:
+          # Deep nesting tests need a larger stack on Linux runners.
+          RUST_MIN_STACK: 16777216
       - run: cargo doc --no-deps
