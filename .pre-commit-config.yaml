@@ -1,3 +1,5 @@
+minimum_pre_commit_version: "3.7.0"
+
 repos:
   - repo: local
     hooks:
@@ -6,8 +8,18 @@ repos:
         entry: cargo fmt --all -- --check
         language: system
         pass_filenames: false
+        stages: [pre-commit]
+
       - id: cargo-check-warnings
         name: cargo check (deny warnings)
         entry: bash -c 'RUSTFLAGS="-Dwarnings" cargo check --all-targets'
         language: system
         pass_filenames: false
+        stages: [pre-commit]
+
+      - id: cargo-test
+        name: cargo test
+        entry: bash -c 'RUST_MIN_STACK=16777216 cargo test'
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

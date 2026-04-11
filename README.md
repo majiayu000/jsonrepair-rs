@@ -133,11 +133,15 @@ cargo doc --no-deps
 # Install pre-commit (using uv)
 uv tool install pre-commit
 
-# Install git hook for this repo
+# Install commit + push hooks
 pre-commit install
+pre-commit install --hook-type pre-push
 
-# Run hooks manually
+# Run commit hooks manually
 pre-commit run --all-files
+
+# Run push hooks manually
+pre-commit run --all-files --hook-stage pre-push
 ```
 
 ## Benchmarks

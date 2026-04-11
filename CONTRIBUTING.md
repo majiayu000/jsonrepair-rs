@@ -31,11 +31,15 @@ RUSTFLAGS="-Dwarnings" cargo check --all-targets
 # Install pre-commit with uv
 uv tool install pre-commit
 
-# Install git hook in this repo
+# Install commit + push hooks
 pre-commit install
+pre-commit install --hook-type pre-push
 
-# Run all hooks manually
+# Run commit hooks manually
 pre-commit run --all-files
+
+# Run push hooks manually
+pre-commit run --all-files --hook-stage pre-push
 ```
 
 ## Adding a new repair pattern
