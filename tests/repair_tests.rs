@@ -2,6 +2,8 @@ use jsonrepair_rs::jsonrepair;
 
 // ── Helpers ──────────────────────────────────────────────────
 
+const DEEP_STACK_TEST_STACK_SIZE: usize = 16 * 1024 * 1024;
+
 fn ok(input: &str, expected: &str) {
     let result = jsonrepair(input).unwrap_or_else(|e| panic!("repair failed for {input:?}: {e}"));
     assert_eq!(result, expected, "input: {input:?}");
@@ -21,6 +23,21 @@ fn err_exact(input: &str, message: &str, position: usize) {
     assert_eq!(err.position, position, "input: {input:?}");
     assert!(err.line > 0, "expected line info for {input:?}");
     assert!(err.column > 0, "expected column info for {input:?}");
+}
+
+fn run_with_large_stack<F>(f: F)
+where
+    F: FnOnce() + Send + 'static,
+{
+    let handle = std::thread::Builder::new()
+        .name("deep-stack-regression".to_string())
+        .stack_size(DEEP_STACK_TEST_STACK_SIZE)
+        .spawn(f)
+        .unwrap_or_else(|e| panic!("failed to spawn deep-stack test thread: {e}"));
+
+    if let Err(payload) = handle.join() {
+        std::panic::resume_unwind(payload);
+    }
 }
 
 // ── 1. Valid JSON (pass-through, whitespace preserved) ───────
@@ -1433,27 +1450,31 @@ fn unquoted_string_pass_through_quoted() {
 
 #[test]
 fn repair_rejects_deeply_nested_input() {
-    let depth = 513;
-    let input = "[".repeat(depth);
-    let result = jsonrepair(&input);
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(
-        err.message.contains("depth"),
-        "Expected depth error, got: {}",
-        err.message
-    );
-    assert_eq!(
-        err.kind,
-        jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
-    );
+    run_with_large_stack(|| {
+        let depth = 513;
+        let input = "[".repeat(depth);
+        let result = jsonrepair(&input);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.message.contains("depth"),
+            "Expected depth error, got: {}",
+            err.message
+        );
+        assert_eq!(
+            err.kind,
+            jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+        );
+    });
 }
 
 #[test]
 fn repair_accepts_max_depth_nesting() {
-    let depth = 512;
-    let input = "[".repeat(depth) + &"]".repeat(depth);
-    assert!(jsonrepair(&input).is_ok());
+    run_with_large_stack(|| {
+        let depth = 512;
+        let input = "[".repeat(depth) + &"]".repeat(depth);
+        assert!(jsonrepair(&input).is_ok());
+    });
 }
 
 // ── 54. Idempotency ─────────────────────────────────────────────
