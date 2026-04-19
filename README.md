@@ -2,26 +2,34 @@
 
 [![CI](https://github.com/majiayu000/jsonrepair-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/majiayu000/jsonrepair-rs/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/jsonrepair-rs.svg)](https://crates.io/crates/jsonrepair-rs)
+[![Docs.rs](https://docs.rs/jsonrepair-rs/badge.svg)](https://docs.rs/jsonrepair-rs)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Repair broken JSON in Rust.
+Repair malformed JSON-like text and return valid JSON text.
 
-`jsonrepair-rs` takes malformed JSON-like text (often from LLM output) and returns valid JSON text.
+`jsonrepair-rs` is a Rust library for cleaning up JSON commonly produced by
+LLMs, copied from JavaScript/Python/MongoDB contexts, pasted from markdown, or
+truncated in transit. It is a Rust port inspired by
+[josdejong/jsonrepair](https://github.com/josdejong/jsonrepair).
 
-Rust port of [josdejong/jsonrepair](https://github.com/josdejong/jsonrepair).
+This crate currently provides a library API only. It does not ship a CLI binary.
 
 ## Installation
 
-Add this to your `Cargo.toml`:
+```bash
+cargo add jsonrepair-rs
+```
+
+Or add it manually:
 
 ```toml
 [dependencies]
-jsonrepair-rs = "0.1"
+jsonrepair-rs = "0.1.1"
 ```
 
-## Quick Start
+Minimum supported Rust version: 1.70.
 
-This crate is a **library crate** (no built-in CLI binary).
+## Quick Start
 
 ```rust
 use jsonrepair_rs::jsonrepair;
@@ -30,29 +38,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let broken = r#"{name: 'Alice', active: True, skills: ['Rust',],}"#;
     let repaired = jsonrepair(broken)?;
 
-    // repaired is always a valid JSON string when Ok(...)
+    assert_eq!(
+        repaired,
+        r#"{"name": "Alice", "active": true, "skills": ["Rust"]}"#
+    );
+
     println!("{repaired}");
     Ok(())
 }
 ```
 
-Output:
+`jsonrepair` returns a JSON string. If you need typed data, parse the repaired
+string with `serde_json` in your application:
 
-```json
-{"name": "Alice", "active": true, "skills": ["Rust"]}
+```rust
+use jsonrepair_rs::jsonrepair;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let repaired = jsonrepair("{user: 'Ada', admin: False, attempts: [1,2,],}")?;
+    let value: serde_json::Value = serde_json::from_str(&repaired)?;
+
+    assert_eq!(value["user"], "Ada");
+    assert_eq!(value["admin"], false);
+    assert_eq!(value["attempts"][1], 2);
+
+    Ok(())
+}
 ```
-
-## Examples
-
-This repository includes runnable examples in `examples/`:
-
-```bash
-cargo run --example repair_basic
-cargo run --example repair_and_parse
-```
-
-- `repair_basic`: repairs a malformed JSON-like string and prints the result.
-- `repair_and_parse`: repairs input, parses with `serde_json`, and validates key fields.
 
 ## API
 
@@ -60,128 +72,194 @@ cargo run --example repair_and_parse
 pub fn jsonrepair(input: &str) -> Result<String, JsonRepairError>
 ```
 
-- Input: malformed JSON-like text.
-- Output: repaired JSON string.
-- On failure: returns `JsonRepairError` with `kind`, `position`, `line`, and `column`.
+Exports:
 
-If you need a typed value, parse the repaired string with `serde_json`:
+- `jsonrepair` repairs one input string.
+- `JsonRepairError` contains `message`, `position`, `kind`, `line`, and `column`.
+- `JsonRepairErrorKind` is a non-exhaustive enum for programmatic error handling.
 
-```rust
-use jsonrepair_rs::jsonrepair;
+The output is valid JSON when the function returns `Ok(...)`. When the input
+cannot be repaired safely, the function returns an error instead of guessing.
 
-let repaired = jsonrepair("{a:1, b:2,}").unwrap();
-let value: serde_json::Value = serde_json::from_str(&repaired).unwrap();
-assert_eq!(value["a"], 1);
-```
+## What It Repairs
 
-## Common Repairs
-
-| Category | Examples |
+| Input style | Example repair |
 | --- | --- |
-| Quote repair | single quotes, curly quotes, backticks, unquoted keys |
-| Comma repair | missing commas, trailing commas, leading commas |
-| Comments | `//`, `/* */`, `#` comments are removed |
-| Python keywords | `True` → `true`, `False` → `false`, `None` → `null` |
-| JS keywords | `undefined`/`NaN`/`Infinity` → `null` |
-| Markdown fences | extracts content from fenced blocks like `````json ... ````` |
-| Truncated JSON | auto-closes missing `]`, `}`, and string terminators |
-| Number fixes | leading zeros, trailing dots (`2.` → `2.0`), truncated exponents |
-| String fixes | concatenation (`"a" + "b"`), invalid escapes, control chars |
-| JSONP | `callback({...})` → `{...}` |
-| MongoDB wrappers | `ObjectId("...")`, `NumberLong("...")` |
-| NDJSON | newline-delimited JSON converted to a JSON array |
-| Ellipsis | `[1, 2, ...]` → `[1, 2]` |
+| Single, curly, and backtick quotes | `{'a': 'b'}` -> `{"a": "b"}` |
+| Unquoted object keys | `{name: "Ada"}` -> `{"name": "Ada"}` |
+| Missing commas | `[1 2 3]` -> `[1, 2, 3]` |
+| Leading or trailing commas | `[1,2,]` -> `[1,2]` |
+| Missing colons | `{"a" 1}` -> `{"a": 1}` |
+| Missing object values | `{"a":}` -> `{"a":null}` |
+| JavaScript, Python, and case variants | `True`, `False`, `None`, `undefined`, `NaN`, `Infinity` |
+| Signed non-finite values | `-Infinity`, `+NaN` -> `null` |
+| Comments | `//`, `/* ... */`, and `#` comments are removed |
+| Markdown code fences | ````json ... ```` wrappers are stripped |
+| Truncated JSON | missing brackets, braces, strings, and exponents are completed |
+| Redundant closing brackets | `{"a":1}}` -> `{"a":1}` |
+| Number fixes | `.5`, `+.5`, `2.`, `2e`, `2e+` |
+| Invalid numbers as strings | `0.0.1` -> `"0.0.1"` |
+| String fixes | missing quotes, invalid escapes, unescaped control chars |
+| String concatenation | `"a" + "b"` -> `"ab"` |
+| JSONP | `callback({"a":1});` -> `{"a":1}` |
+| MongoDB wrappers | `ObjectId("...")`, `NumberLong("...")`, `NumberInt(...)` |
+| NDJSON / root value lists | newline-delimited values become an array |
+| URLs and regex-like tokens | unquoted URL and regex-like text become strings |
+| Ellipsis placeholders | `[1, 2, ...]` -> `[1, 2]` |
+| BOM and special whitespace | normalized outside strings |
+
+The test suite contains many edge cases for these categories in
+`tests/repair_tests.rs`.
 
 ## Error Handling
 
 ```rust
 use jsonrepair_rs::{jsonrepair, JsonRepairErrorKind};
 
-match jsonrepair("not repairable at all") {
-    Ok(json) => println!("Repaired: {json}"),
-    Err(e) => {
-        eprintln!("kind={:?}, at {}:{} (pos={}): {}", e.kind, e.line, e.column, e.position, e.message);
+match jsonrepair("") {
+    Ok(json) => println!("repaired: {json}"),
+    Err(err) => {
+        eprintln!(
+            "kind={:?}, line={}, column={}, position={}: {}",
+            err.kind, err.line, err.column, err.position, err.message
+        );
 
-        if matches!(e.kind, JsonRepairErrorKind::MaxDepthExceeded) {
-            eprintln!("input nesting depth exceeded the internal limit");
+        if matches!(err.kind, JsonRepairErrorKind::UnexpectedEnd) {
+            eprintln!("input ended before a repairable JSON value was found");
         }
     }
 }
 ```
 
-## Notes
+Error kinds are marked `#[non_exhaustive]`; include a fallback arm when matching
+them outside this crate.
+
+## Limits And Behavior
 
 - Maximum supported nesting depth is 512.
-- When no safe repair is possible, the function returns an error instead of guessing.
+- The crate preserves much of the original whitespace where possible.
+- It returns a repaired JSON string, not a `serde_json::Value`.
+- It does not provide streaming repair or a command-line binary.
+- It is designed for practical repair, not for accepting arbitrary unsafe input
+  as if it were trustworthy. Validate the repaired data according to your
+  application's schema before using it.
+
+## Examples
+
+Runnable examples live in `examples/`:
+
+```bash
+cargo run --example repair_basic
+cargo run --example repair_and_parse
+```
+
+`repair_basic` repairs and prints a malformed JSON-like string.
+`repair_and_parse` repairs a string and then parses it with `serde_json`.
+
+## Feature Flags
+
+| Feature | Default | Notes |
+| --- | --- | --- |
+| `serde` | No | Enables optional `serde` and `serde_json` dependencies. The public API remains string-based. |
+
+For most applications, add `serde_json` directly to your own `Cargo.toml` if you
+want to parse the repaired string into typed data.
 
 ## Development
 
 ```bash
-# Build and test
 cargo build
-cargo test
+cargo test --all-targets
+```
 
-# CI-equivalent checks
+CI-equivalent local checks:
+
+```bash
 RUSTFLAGS="-Dwarnings" cargo check --all-targets
 cargo fmt --all -- --check
+cargo test --all-targets
 cargo doc --no-deps
 ```
 
-## Pre-commit
+The GitHub Actions workflow runs check, formatting, tests, and docs on `main`
+pushes and pull requests.
+
+## Pre-commit Hooks
 
 ```bash
-# Install pre-commit (using uv)
 uv tool install pre-commit
 
-# Install commit + push hooks
 pre-commit install
 pre-commit install --hook-type pre-push
 
-# Run commit hooks manually
 pre-commit run --all-files
-
-# Run push hooks manually
 pre-commit run --all-files --hook-stage pre-push
 ```
 
 ## Benchmarks
 
+Run Criterion benchmarks:
+
 ```bash
 cargo bench
 ```
 
-### Optimization Round Automation
+Current benchmark groups cover:
 
-Use this script to run one full optimization validation round with automatic gating:
+- valid small JSON
+- broken small JSON
+- valid 1k-item JSON
+- broken 1k-item JSON
+- 100-level nesting
+- 100 comments
+- 200 string escapes
+
+For optimization work, use the benchmark gate script with an existing Criterion
+baseline:
 
 ```bash
-# Compare against an existing Criterion baseline
 scripts/opt_round.sh --baseline current_bec2481
 ```
 
-Default gate policy:
-- fail only if a regression is stable across repeated benchmark passes
-- automatically rerun benchmarks up to 2 extra times after a regressed first pass
-- run a fresh control-baseline self-check before failing a regressed round, and rerun that self-check on any non-unchanged first pass
-- allow unchanged benchmarks
+The script runs:
 
-Strict mode (all benchmarks must improve):
+1. `cargo fmt`
+2. `cargo check --all-targets`
+3. `cargo clippy --all-targets --all-features -- -D warnings`
+4. `cargo test --all-targets`
+5. Criterion benchmarks against the selected baseline
+6. Stable regression detection with optional reruns and a control self-check
+
+Useful options:
 
 ```bash
+scripts/opt_round.sh --baseline current_bec2481 --eps 0.01
 scripts/opt_round.sh --baseline current_bec2481 --require-all-improved
+scripts/opt_round.sh --baseline current_bec2481 --reruns-on-regression 4
+scripts/opt_round.sh --baseline current_bec2481 --skip-checks
 ```
 
-Customize the extra reruns if needed:
+Reports are written to `.omx/reports/opt-round-<timestamp>.md` by default. If
+the benchmark environment is too noisy to trust, the script exits inconclusive
+instead of reporting a false regression.
+
+## Release Status
+
+The latest crate published on crates.io is `0.1.1`.
+
+To publish a new release, first bump the version in `Cargo.toml` and update any
+version references in this README. Then run:
 
 ```bash
-scripts/opt_round.sh --baseline current_bec2481 --reruns-on-regression 4
+cargo test --all-targets
+cargo doc --no-deps
+cargo package
+cargo publish --dry-run
 ```
 
-The script writes a per-round report to:
-- `.omx/reports/opt-round-<timestamp>.md`
+If the dry run succeeds, publish with `cargo publish` and create a matching git
+tag/release.
 
-If the current machine is too noisy to trust the benchmark comparison, the script exits with an inconclusive result instead of misreporting a code regression.
+## License
 
-## Acknowledgments
-
-This is a Rust port of [jsonrepair](https://github.com/josdejong/jsonrepair) by Jos de Jong.
+MIT. See [LICENSE](LICENSE).
