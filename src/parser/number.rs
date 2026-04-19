@@ -25,6 +25,7 @@ impl JsonRepairer {
 
     #[inline(always)]
     pub(super) fn parse_number(&mut self) -> Result<bool> {
+        let len = self.chars.len();
         let start = self.pos;
         let mut append_trailing_zero = false;
         let mut has_leading_dot = false;
@@ -34,9 +35,10 @@ impl JsonRepairer {
             self.pos += 1;
             if self.at_end_of_number() {
                 append_trailing_zero = true;
-            } else if !(self.peek().is_some_and(chars::is_digit)
-                || (self.peek() == Some('.')
-                    && self.peek_at(self.pos + 1).is_some_and(chars::is_digit)))
+            } else if !(self.pos < len && chars::is_digit(self.chars[self.pos])
+                || (self.pos + 1 < len
+                    && self.chars[self.pos] == '.'
+                    && chars::is_digit(self.chars[self.pos + 1])))
             {
                 self.pos = start;
                 return Ok(false);
@@ -44,57 +46,59 @@ impl JsonRepairer {
         }
 
         if !append_trailing_zero {
-            if self.peek() == Some('.') {
+            if self.pos < len && self.chars[self.pos] == '.' {
                 has_leading_dot = true;
                 self.pos += 1;
 
-                while self.peek().is_some_and(chars::is_digit) {
+                while self.pos < len && chars::is_digit(self.chars[self.pos]) {
                     self.pos += 1;
                 }
             } else {
                 let mut integer_digits = 0usize;
                 let mut first_integer_digit = '\0';
-                while let Some(c) = self.peek() {
-                    if chars::is_digit(c) {
-                        if integer_digits == 0 {
-                            first_integer_digit = c;
-                        } else if integer_digits == 1 && first_integer_digit == '0' {
-                            has_invalid_leading_zero = true;
-                        }
-                        integer_digits += 1;
-                        self.pos += 1;
-                    } else {
+                while self.pos < len {
+                    let c = self.chars[self.pos];
+                    if !chars::is_digit(c) {
                         break;
                     }
+
+                    if integer_digits == 0 {
+                        first_integer_digit = c;
+                    } else if integer_digits == 1 && first_integer_digit == '0' {
+                        has_invalid_leading_zero = true;
+                    }
+                    integer_digits += 1;
+                    self.pos += 1;
                 }
 
-                if self.peek() == Some('.') {
+                if self.pos < len && self.chars[self.pos] == '.' {
                     self.pos += 1;
                     if self.at_end_of_number() {
                         append_trailing_zero = true;
-                    } else if !self.peek().is_some_and(chars::is_digit) {
+                    } else if self.pos >= len || !chars::is_digit(self.chars[self.pos]) {
                         self.pos = start;
                         return Ok(false);
                     } else {
-                        while self.peek().is_some_and(chars::is_digit) {
+                        while self.pos < len && chars::is_digit(self.chars[self.pos]) {
                             self.pos += 1;
                         }
                     }
                 }
             }
 
-            if !append_trailing_zero && self.peek().is_some_and(|c| c == 'e' || c == 'E') {
+            if !append_trailing_zero && self.pos < len && matches!(self.chars[self.pos], 'e' | 'E')
+            {
                 self.pos += 1;
-                if self.peek().is_some_and(|c| c == '-' || c == '+') {
+                if self.pos < len && matches!(self.chars[self.pos], '-' | '+') {
                     self.pos += 1;
                 }
                 if self.at_end_of_number() {
                     append_trailing_zero = true;
-                } else if !self.peek().is_some_and(chars::is_digit) {
+                } else if self.pos >= len || !chars::is_digit(self.chars[self.pos]) {
                     self.pos = start;
                     return Ok(false);
                 } else {
-                    while self.peek().is_some_and(chars::is_digit) {
+                    while self.pos < len && chars::is_digit(self.chars[self.pos]) {
                         self.pos += 1;
                     }
                 }
@@ -141,7 +145,7 @@ impl JsonRepairer {
         }
 
         if has_leading_dot {
-            if self.peek_at(start) == Some('-') {
+            if self.chars[start] == '-' {
                 self.output.push('-');
                 self.output.push('0');
                 self.output.push('.');

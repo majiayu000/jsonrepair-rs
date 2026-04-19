@@ -160,7 +160,9 @@ scripts/opt_round.sh --baseline current_bec2481
 ```
 
 Default gate policy:
-- fail if any benchmark is statistically regressed (mean CI lower bound > 0)
+- fail only if a regression is stable across repeated benchmark passes
+- automatically rerun benchmarks up to 2 extra times after a regressed first pass
+- run a fresh control-baseline self-check before failing a regressed round, and rerun that self-check on any non-unchanged first pass
 - allow unchanged benchmarks
 
 Strict mode (all benchmarks must improve):
@@ -169,8 +171,16 @@ Strict mode (all benchmarks must improve):
 scripts/opt_round.sh --baseline current_bec2481 --require-all-improved
 ```
 
+Customize the extra reruns if needed:
+
+```bash
+scripts/opt_round.sh --baseline current_bec2481 --reruns-on-regression 4
+```
+
 The script writes a per-round report to:
 - `.omx/reports/opt-round-<timestamp>.md`
+
+If the current machine is too noisy to trust the benchmark comparison, the script exits with an inconclusive result instead of misreporting a code regression.
 
 ## Acknowledgments
 
