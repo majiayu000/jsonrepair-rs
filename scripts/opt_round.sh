@@ -256,9 +256,17 @@ run_bench_series() {
   reset_series_state
   run_bench_pass 1
   initial_regressions="$CURRENT_RUN_REGRESSED"
+  initial_non_unchanged=$((CURRENT_RUN_IMPROVED + CURRENT_RUN_REGRESSED))
 
-  if [[ "$initial_regressions" -gt 0 && "$RERUNS_ON_REGRESSION" -gt 0 ]]; then
-    echo "[opt-round] Detected regressions on ${SERIES_NAME,,} pass 1; running $RERUNS_ON_REGRESSION additional pass(es) to filter benchmark noise"
+  rerun_needed="$initial_regressions"
+  rerun_reason="regressions"
+  if [[ "${SERIES_RERUN_ON_NON_UNCHANGED:-0}" -eq 1 ]]; then
+    rerun_needed="$initial_non_unchanged"
+    rerun_reason="non-unchanged results"
+  fi
+
+  if [[ "$rerun_needed" -gt 0 && "$RERUNS_ON_REGRESSION" -gt 0 ]]; then
+    echo "[opt-round] Detected $rerun_reason on $SERIES_NAME pass 1; running $RERUNS_ON_REGRESSION additional pass(es) to filter benchmark noise"
     rerun=0
     while [[ "$rerun" -lt "$RERUNS_ON_REGRESSION" ]]; do
       rerun=$((rerun + 1))
@@ -271,6 +279,7 @@ run_bench_series() {
 
 SERIES_NAME="Baseline Comparison"
 SERIES_BASELINE="$BASELINE"
+SERIES_RERUN_ON_NON_UNCHANGED=0
 run_bench_series
 
 primary_improved_count="$improved_count"
@@ -301,6 +310,7 @@ if [[ "$primary_regressed_count" -gt 0 ]]; then
 
   SERIES_NAME="Control Self-Check"
   SERIES_BASELINE="$control_baseline"
+  SERIES_RERUN_ON_NON_UNCHANGED=1
   run_bench_series
 
   control_improved_count="$improved_count"
