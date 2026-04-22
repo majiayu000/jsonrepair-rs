@@ -5,6 +5,8 @@
 [![Docs.rs](https://docs.rs/jsonrepair-rs/badge.svg)](https://docs.rs/jsonrepair-rs)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+![jsonrepair-rs: Repair malformed JSON into valid JSON](docs/assets/jsonrepair-rs-card.png)
+
 Repair malformed JSON-like text and return valid JSON text.
 
 `jsonrepair-rs` is a Rust library for cleaning up JSON commonly produced by
