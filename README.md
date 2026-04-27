@@ -26,7 +26,7 @@ Or add it manually:
 
 ```toml
 [dependencies]
-jsonrepair-rs = "0.1.1"
+jsonrepair-rs = "0.2.0"
 ```
 
 Minimum supported Rust version: 1.70.
@@ -92,6 +92,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ```rust
 pub fn jsonrepair(input: &str) -> Result<String, JsonRepairError>
+pub fn jsonrepair_to_writer<W>(input: &str, writer: &mut W) -> Result<(), JsonRepairWriteError>
+pub fn jsonrepair_reader_to_writer<R, W>(reader: R, writer: &mut W) -> Result<(), JsonRepairStreamError>
 ```
 
 Exports:
@@ -99,13 +101,37 @@ Exports:
 - `jsonrepair` repairs one input string.
 - `jsonrepair_to_writer` repairs one input string and writes the result to any
   `std::io::Write`.
+- `jsonrepair_reader_to_writer` repairs text from any `std::io::Read` and
+  writes the result to any `std::io::Write`.
 - `JsonRepairError` contains `message`, `position`, `kind`, `line`, and `column`.
 - `JsonRepairErrorKind` is a non-exhaustive enum for programmatic error handling.
 - `JsonRepairWriteError` distinguishes repair failures from output write
   failures in writer-based workflows.
+- `JsonRepairStreamError` distinguishes input read failures, repair failures,
+  and output write failures in reader-to-writer workflows.
 
 The output is valid JSON when the function returns `Ok(...)`. When the input
 cannot be repaired safely, the function returns an error instead of guessing.
+
+The reader-to-writer API is streaming-oriented at the IO boundary, but the
+current parser still buffers complete input and repaired output internally. See
+[`docs/streaming-api.md`](docs/streaming-api.md) for the design and memory
+tradeoffs.
+
+Repair a file into another file:
+
+```rust,no_run
+use std::fs::File;
+use jsonrepair_rs::jsonrepair_reader_to_writer;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut input = File::open("broken.json")?;
+    let mut output = File::create("repaired.json")?;
+
+    jsonrepair_reader_to_writer(&mut input, &mut output)?;
+    Ok(())
+}
+```
 
 ## What It Repairs
 
@@ -165,7 +191,9 @@ them outside this crate.
 - Maximum supported nesting depth is 512.
 - The crate preserves much of the original whitespace where possible.
 - It returns a repaired JSON string, not a `serde_json::Value`.
-- It does not provide streaming repair.
+- The `jsonrepair_reader_to_writer` API supports reader-to-writer workflows,
+  but `0.2.0` still buffers internally instead of performing constant-memory
+  repair.
 - It is designed for practical repair, not for accepting arbitrary unsafe input
   as if it were trustworthy. Validate the repaired data according to your
   application's schema before using it.
@@ -286,12 +314,18 @@ instead of reporting a false regression.
 
 ## Release Status
 
-The latest crate published on crates.io is `0.1.1`.
+This branch prepares `0.2.0`. The latest crate published on crates.io remains
+`0.1.1` until the release is published.
 
 To publish a new release, first bump the version in `Cargo.toml` and update any
-version references in this README. Then run:
+version references in this README. Then follow
+[`docs/release-checklist.md`](docs/release-checklist.md). The minimum local
+gate is:
 
 ```bash
+RUSTFLAGS="-Dwarnings" cargo check --all-targets
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-targets
 cargo doc --no-deps
 cargo package

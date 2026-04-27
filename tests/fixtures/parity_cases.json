@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "name": "valid-object-pass-through",
+      "category": "valid-json",
+      "input": "{\"a\":2}",
+      "expected": "{\"a\":2}",
+      "source": "upstream-representative",
+      "divergence": null
+    },
+    {
+      "name": "single-quotes",
+      "category": "quotes",
+      "input": "{'name': 'Ada'}",
+      "expected": "{\"name\": \"Ada\"}",
+      "source": "upstream-representative",
+      "divergence": null
+    },
+    {
+      "name": "comments",
+      "category": "comments",
+      "input": "{\n// comment\n\"a\": 1\n}",
+      "expected": "{\n\n\"a\": 1\n}",
+      "source": "upstream-representative",
+      "divergence": null
+    },
+    {
+      "name": "missing-comma-object",
+      "category": "missing-commas",
+      "input": "{\"a\": 1 \"b\": 2}",
+      "expected": "{\"a\": 1, \"b\": 2}",
+      "source": "upstream-representative",
+      "divergence": null
+    },
+    {
+      "name": "missing-comma-array",
+      "category": "missing-commas",
+      "input": "[1 2 3]",
+      "expected": "[1, 2, 3]",
+      "source": "upstream-representative",
+      "divergence": null
+    },
+    {
+      "name": "trailing-comma-object",
+      "category": "trailing-commas",
+      "input": "{\"a\": 1, \"b\": 2,}",
+      "expected": "{\"a\": 1, \"b\": 2}",
+      "source": "upstream-representative",
+      "divergence": null
+    },
+    {
+      "name": "truncated-object",
+      "category": "truncation",
+      "input": "{\"a\": 1, \"b\": 2",
+      "expected": "{\"a\": 1, \"b\": 2}",
+      "source": "upstream-representative",
+      "divergence": null
+    },
+    {
+      "name": "truncated-array",
+      "category": "truncation",
+      "input": "[1, 2, 3",
+      "expected": "[1, 2, 3]",
+      "source": "upstream-representative",
+      "divergence": null
+    },
+    {
+      "name": "truncated-string",
+      "category": "truncation",
+      "input": "\"hello",
+      "expected": "\"hello\"",
+      "source": "upstream-representative",
+      "divergence": null
+    },
+    {
+      "name": "jsonp-callback",
+      "category": "jsonp",
+      "input": "callback({\"a\": 1});",
+      "expected": "{\"a\": 1}",
+      "source": "upstream-representative",
+      "divergence": null
+    },
+    {
+      "name": "mongodb-object-id",
+      "category": "mongodb",
+      "input": "{\"_id\": ObjectId(\"123abc\")}",
+      "expected": "{\"_id\": \"123abc\"}",
+      "source": "upstream-representative",
+      "divergence": null
+    },
+    {
+      "name": "mongodb-number-long",
+      "category": "mongodb",
+      "input": "{\"count\": NumberLong(\"42\")}",
+      "expected": "{\"count\": \"42\"}",
+      "source": "upstream-representative",
+      "divergence": null
+    },
+    {
+      "name": "ndjson-two-objects",
+      "category": "ndjson",
+      "input": "{\"a\":1}\n{\"b\":2}",
+      "expected": "[\n{\"a\":1},\n{\"b\":2}\n]",
+      "source": "upstream-representative",
+      "divergence": null
+    },
+    {
+      "name": "markdown-json-fence",
+      "category": "llm-markdown",
+      "input": "```json\n{\"a\": 1}\n```",
+      "expected": "\n{\"a\": 1}\n",
+      "source": "upstream-representative",
+      "divergence": null
+    },
+    {
+      "name": "llm-fenced-python-keywords",
+      "category": "llm-markdown",
+      "input": "```json\n{name: 'Ada', active: True, notes: None,}\n```",
+      "expected": "\n{\"name\": \"Ada\", \"active\": true, \"notes\": null}\n",
+      "source": "project-regression",
+      "divergence": null
+    },
+    {
+      "name": "unquoted-url",
+      "category": "urls",
+      "input": "{url:https://www.bible.com/}",
+      "expected": "{\"url\":\"https://www.bible.com/\"}",
+      "source": "upstream-representative",
+      "divergence": null
+    },
+    {
+      "name": "regex-token",
+      "category": "regex-like",
+      "input": "{regex: /standalone-styles.css/}",
+      "expected": "{\"regex\": \"/standalone-styles.css/\"}",
+      "source": "project-regression",
+      "divergence": null
+    },
+    {
+      "name": "ellipsis-array",
+      "category": "ellipsis",
+      "input": "[1,2,3,...]",
+      "expected": "[1,2,3]",
+      "source": "upstream-representative",
+      "divergence": null
+    },
+    {
+      "name": "python-keywords",
+      "category": "keywords",
+      "input": "{\"flag\": True, \"value\": None}",
+      "expected": "{\"flag\": true, \"value\": null}",
+      "source": "upstream-representative",
+      "divergence": null
+    }
+  ]
+}
