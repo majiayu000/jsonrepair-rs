@@ -31,6 +31,7 @@ pub use error::{JsonRepairError, JsonRepairErrorKind};
 
 /// Error returned by writer-based repair helpers.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum JsonRepairWriteError {
     /// The input could not be repaired safely.
     Repair(JsonRepairError),
