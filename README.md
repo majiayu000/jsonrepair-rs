@@ -14,7 +14,7 @@ LLMs, copied from JavaScript/Python/MongoDB contexts, pasted from markdown, or
 truncated in transit. It is a Rust port inspired by
 [josdejong/jsonrepair](https://github.com/josdejong/jsonrepair).
 
-This crate currently provides a library API only. It does not ship a CLI binary.
+This crate provides both a library API and a small command-line binary.
 
 ## Installation
 
@@ -30,6 +30,26 @@ jsonrepair-rs = "0.1.1"
 ```
 
 Minimum supported Rust version: 1.70.
+
+## Command Line
+
+Install the binary with Cargo:
+
+```bash
+cargo install jsonrepair-rs
+```
+
+Repair stdin to stdout:
+
+```bash
+printf "{name: 'Ada', active: True}" | jsonrepair
+```
+
+Repair a file and write the result to another file:
+
+```bash
+jsonrepair broken.json --output repaired.json
+```
 
 ## Quick Start
 
@@ -141,7 +161,7 @@ them outside this crate.
 - Maximum supported nesting depth is 512.
 - The crate preserves much of the original whitespace where possible.
 - It returns a repaired JSON string, not a `serde_json::Value`.
-- It does not provide streaming repair or a command-line binary.
+- It does not provide streaming repair.
 - It is designed for practical repair, not for accepting arbitrary unsafe input
   as if it were trustworthy. Validate the repaired data according to your
   application's schema before using it.
