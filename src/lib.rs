@@ -31,6 +31,59 @@ mod parser;
 pub use error::JsonRepairParseError;
 pub use error::{JsonRepairError, JsonRepairErrorKind};
 
+/// Error returned by writer-based repair helpers.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum JsonRepairWriteError {
+    /// The input could not be repaired safely.
+    Repair(JsonRepairError),
+    /// The repaired JSON could not be written to the destination.
+    Write(std::io::Error),
+}
+
+impl std::fmt::Display for JsonRepairWriteError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Repair(err) => err.fmt(f),
+            Self::Write(err) => write!(f, "failed to write repaired JSON: {err}"),
+        }
+    }
+}
+
+impl std::error::Error for JsonRepairWriteError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Repair(err) => Some(err),
+            Self::Write(err) => Some(err),
+        }
+    }
+}
+
+impl From<JsonRepairError> for JsonRepairWriteError {
+    fn from(err: JsonRepairError) -> Self {
+        Self::Repair(err)
+    }
+}
+
+impl From<std::io::Error> for JsonRepairWriteError {
+    fn from(err: std::io::Error) -> Self {
+        Self::Write(err)
+    }
+}
+
+/// Repair a broken JSON string and write the valid JSON to a writer.
+///
+/// This is a writer convenience API. It repairs the input first, then writes
+/// the repaired JSON bytes to the provided [`std::io::Write`] destination.
+pub fn jsonrepair_to_writer<W>(input: &str, writer: &mut W) -> Result<(), JsonRepairWriteError>
+where
+    W: std::io::Write + ?Sized,
+{
+    let repaired = jsonrepair(input)?;
+    writer.write_all(repaired.as_bytes())?;
+    Ok(())
+}
+
 /// Repair a broken JSON string, returning valid JSON.
 ///
 /// Handles 30+ categories of issues including:
