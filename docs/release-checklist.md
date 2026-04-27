@@ -19,16 +19,24 @@ Run the CI-equivalent checks:
 ```bash
 RUSTFLAGS="-Dwarnings" cargo check --all-targets
 cargo fmt --all -- --check
-cargo test --all-targets
-cargo doc --no-deps
-```
-
-Run the stronger local gate before publishing:
-
-```bash
 cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-targets
+cargo test --all-targets --all-features
+cargo doc --no-deps
 cargo package --allow-dirty
 ```
+
+Run the publish dry run before publishing:
+
+```bash
+cargo publish --dry-run --allow-dirty
+```
+
+Use `--allow-dirty` only while validating an unreleased branch. For the actual
+publish, use a clean tagged checkout and omit `--allow-dirty`.
+
+Nightly fuzz checks are intentionally not part of the default CI gate. See
+[`docs/fuzzing.md`](fuzzing.md) for the cargo-fuzz smoke run.
 
 Inspect the generated package:
 
@@ -39,17 +47,6 @@ cargo package --list --allow-dirty
 The package should include the source, tests, README, license, changelog, and
 release docs. It should not include local build outputs, `.omx` state, or
 target artifacts.
-
-## Publish Dry Run
-
-Run:
-
-```bash
-cargo publish --dry-run --allow-dirty
-```
-
-Use `--allow-dirty` only while validating an unreleased branch. For the actual
-publish, use a clean tagged checkout and omit `--allow-dirty`.
 
 ## Publish
 
