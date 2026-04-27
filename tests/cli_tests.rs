@@ -116,3 +116,102 @@ fn repair_error_does_not_truncate_existing_output_file() {
     let _ = fs::remove_file(input_path);
     let _ = fs::remove_file(output_path);
 }
+
+#[test]
+fn help_documents_exit_codes() -> Result<(), Box<dyn std::error::Error>> {
+    let output = Command::new(bin()).arg("--help").output()?;
+
+    assert!(output.status.success(), "{output:?}");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Exit Codes:"), "{stdout}");
+    assert!(
+        stdout.contains("  2                   Command-line usage error."),
+        "{stdout}"
+    );
+    Ok(())
+}
+
+#[test]
+fn usage_error_exits_2() -> Result<(), Box<dyn std::error::Error>> {
+    let output = Command::new(bin()).arg("--unknown").output()?;
+
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(output.stdout.is_empty(), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("unknown option"));
+    Ok(())
+}
+
+#[test]
+fn output_requires_path_exits_2() -> Result<(), Box<dyn std::error::Error>> {
+    let output = Command::new(bin()).arg("--output").output()?;
+
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(output.stdout.is_empty(), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("requires a path"));
+    Ok(())
+}
+
+#[test]
+fn dash_reads_stdin_to_output_file() -> Result<(), Box<dyn std::error::Error>> {
+    let output_path = temp_path("dash-output");
+    let mut child = Command::new(bin())
+        .arg("-")
+        .arg("--output")
+        .arg(&output_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(b"{name: 'Ada', active: True}")?;
+    } else {
+        return Err(
+            std::io::Error::new(std::io::ErrorKind::Other, "stdin pipe was unavailable").into(),
+        );
+    }
+
+    let output = child.wait_with_output()?;
+
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stdout.is_empty(), "{output:?}");
+    assert_eq!(
+        fs::read_to_string(&output_path)?,
+        r#"{"name": "Ada", "active": true}"#
+    );
+
+    let _ = fs::remove_file(output_path);
+    Ok(())
+}
+
+#[test]
+fn output_equals_writes_file() -> Result<(), Box<dyn std::error::Error>> {
+    let output_path = temp_path("equals-output");
+    let output_arg = format!("--output={}", output_path.display());
+    let mut child = Command::new(bin())
+        .arg(output_arg)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(b"{skills: ['Rust',], ok: False}")?;
+    } else {
+        return Err(
+            std::io::Error::new(std::io::ErrorKind::Other, "stdin pipe was unavailable").into(),
+        );
+    }
+
+    let output = child.wait_with_output()?;
+
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stdout.is_empty(), "{output:?}");
+    assert_eq!(
+        fs::read_to_string(&output_path)?,
+        r#"{"skills": ["Rust"], "ok": false}"#
+    );
+
+    let _ = fs::remove_file(output_path);
+    Ok(())
+}
