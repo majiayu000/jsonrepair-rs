@@ -93,3 +93,26 @@ fn reports_repair_errors() {
     assert!(output.stdout.is_empty(), "{output:?}");
     assert!(String::from_utf8_lossy(&output.stderr).contains("JSON repair error"));
 }
+
+#[test]
+fn repair_error_does_not_truncate_existing_output_file() {
+    let input_path = temp_path("invalid-input");
+    let output_path = temp_path("existing-output");
+    fs::write(&input_path, br#""\u00""#).unwrap();
+    fs::write(&output_path, "keep me").unwrap();
+
+    let output = Command::new(bin())
+        .arg(&input_path)
+        .arg("--output")
+        .arg(&output_path)
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success(), "{output:?}");
+    assert!(output.stdout.is_empty(), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("JSON repair error"));
+    assert_eq!(fs::read_to_string(&output_path).unwrap(), "keep me");
+
+    let _ = fs::remove_file(input_path);
+    let _ = fs::remove_file(output_path);
+}

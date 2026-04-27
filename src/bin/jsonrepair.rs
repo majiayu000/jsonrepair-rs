@@ -2,12 +2,13 @@ use std::{
     env,
     ffi::{OsStr, OsString},
     fmt, fs,
-    io::{self, Read, Write},
+    fs::File,
+    io::{self, Read},
     path::{Path, PathBuf},
     process,
 };
 
-use jsonrepair_rs::{jsonrepair, JsonRepairError};
+use jsonrepair_rs::{jsonrepair_reader_to_writer, JsonRepairStreamError};
 
 const HELP: &str = "\
 Repair malformed JSON-like text into valid JSON.
@@ -52,45 +53,37 @@ fn run() -> Result<(), CliError> {
         return Ok(());
     }
 
-    let input = read_input(args.input.as_deref())?;
-    let repaired = jsonrepair(&input)?;
-
-    if let Some(path) = args.output {
-        fs::write(&path, repaired).map_err(|source| CliError::Io {
-            action: format!("failed to write {}", path.display()),
+    if let Some(path) = args.input.as_deref().filter(|path| *path != Path::new("-")) {
+        let mut input = File::open(path).map_err(|source| CliError::Io {
+            action: format!("failed to read {}", path.display()),
             source,
         })?;
+        repair_to_output(&mut input, args.output.as_deref())?;
     } else {
-        io::stdout()
-            .write_all(repaired.as_bytes())
-            .map_err(|source| CliError::Io {
-                action: "failed to write stdout".to_string(),
-                source,
-            })?;
+        let stdin = io::stdin();
+        let mut input = stdin.lock();
+        repair_to_output(&mut input, args.output.as_deref())?;
     }
 
     Ok(())
 }
 
-fn read_input(path: Option<&Path>) -> Result<String, CliError> {
-    match path {
-        Some(path) if path != Path::new("-") => {
-            fs::read_to_string(path).map_err(|source| CliError::Io {
-                action: format!("failed to read {}", path.display()),
-                source,
-            })
-        }
-        _ => {
-            let mut input = String::new();
-            io::stdin()
-                .read_to_string(&mut input)
-                .map_err(|source| CliError::Io {
-                    action: "failed to read stdin".to_string(),
-                    source,
-                })?;
-            Ok(input)
-        }
+fn repair_to_output(input: &mut dyn Read, output_path: Option<&Path>) -> Result<(), CliError> {
+    if let Some(path) = output_path {
+        let mut repaired = Vec::new();
+        jsonrepair_reader_to_writer(input, &mut repaired)?;
+
+        fs::write(path, repaired).map_err(|source| CliError::Io {
+            action: format!("failed to write {}", path.display()),
+            source,
+        })?;
+    } else {
+        let stdout = io::stdout();
+        let mut output = stdout.lock();
+        jsonrepair_reader_to_writer(input, &mut output)?;
     }
+
+    Ok(())
 }
 
 #[derive(Debug, Default)]
@@ -152,7 +145,7 @@ fn display_arg(arg: &OsStr) -> String {
 enum CliError {
     Usage(String),
     Io { action: String, source: io::Error },
-    Repair(JsonRepairError),
+    Repair(JsonRepairStreamError),
 }
 
 impl fmt::Display for CliError {
@@ -165,8 +158,8 @@ impl fmt::Display for CliError {
     }
 }
 
-impl From<JsonRepairError> for CliError {
-    fn from(err: JsonRepairError) -> Self {
+impl From<JsonRepairStreamError> for CliError {
+    fn from(err: JsonRepairStreamError) -> Self {
         Self::Repair(err)
     }
 }

@@ -71,6 +71,38 @@ impl From<std::io::Error> for JsonRepairWriteError {
     }
 }
 
+/// Error returned by reader-to-writer repair helpers.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum JsonRepairStreamError {
+    /// The input stream could not be read as UTF-8 text.
+    Read(std::io::Error),
+    /// The input could not be repaired safely.
+    Repair(JsonRepairError),
+    /// The repaired JSON could not be written to the destination.
+    Write(std::io::Error),
+}
+
+impl std::fmt::Display for JsonRepairStreamError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Read(err) => write!(f, "failed to read JSON input: {err}"),
+            Self::Repair(err) => err.fmt(f),
+            Self::Write(err) => write!(f, "failed to write repaired JSON: {err}"),
+        }
+    }
+}
+
+impl std::error::Error for JsonRepairStreamError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Read(err) => Some(err),
+            Self::Repair(err) => Some(err),
+            Self::Write(err) => Some(err),
+        }
+    }
+}
+
 /// Repair a broken JSON string and write the valid JSON to a writer.
 ///
 /// This is a writer convenience API. It repairs the input first, then writes
@@ -81,6 +113,34 @@ where
 {
     let repaired = jsonrepair(input)?;
     writer.write_all(repaired.as_bytes())?;
+    Ok(())
+}
+
+/// Repair JSON-like text from a reader and write valid JSON to a writer.
+///
+/// This is the first streaming-oriented API surface: callers can connect files,
+/// stdin, stdout, sockets, or buffers without receiving an owned repaired
+/// [`String`]. The current parser still needs the complete input and repaired
+/// output buffered inside the crate before writing; this preserves exact repair
+/// behavior while leaving room for a future lower-memory parser.
+pub fn jsonrepair_reader_to_writer<R, W>(
+    mut reader: R,
+    writer: &mut W,
+) -> Result<(), JsonRepairStreamError>
+where
+    R: std::io::Read,
+    W: std::io::Write + ?Sized,
+{
+    let mut input = String::new();
+    reader
+        .read_to_string(&mut input)
+        .map_err(JsonRepairStreamError::Read)?;
+
+    let repaired = jsonrepair(&input).map_err(JsonRepairStreamError::Repair)?;
+    writer
+        .write_all(repaired.as_bytes())
+        .map_err(JsonRepairStreamError::Write)?;
+
     Ok(())
 }
 
