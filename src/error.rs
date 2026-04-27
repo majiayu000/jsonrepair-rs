@@ -91,6 +91,7 @@ impl std::error::Error for JsonRepairError {}
 /// Error returned by serde-powered repair-and-parse helpers.
 #[cfg(feature = "serde")]
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum JsonRepairParseError {
     /// The input could not be repaired safely.
     Repair(JsonRepairError),
