@@ -1548,3 +1548,70 @@ fn error_includes_kind() {
     let err = jsonrepair("").unwrap_err();
     assert_eq!(err.kind, JsonRepairErrorKind::UnexpectedEnd);
 }
+
+// ── 57. Large and hostile input regressions ─────────────────────
+
+#[test]
+fn large_deeply_nested_truncated_array_repairs_below_limit() {
+    run_with_large_stack(|| {
+        let depth = 128;
+        let input = format!("{}true", "[".repeat(depth));
+        let expected = format!("{}true{}", "[".repeat(depth), "]".repeat(depth));
+
+        assert_eq!(jsonrepair(&input).unwrap(), expected);
+    });
+}
+
+#[test]
+fn large_quoted_string_passthrough_is_valid_json() {
+    let payload = "x".repeat(64 * 1024);
+    let input = format!("{{\"payload\":\"{payload}\"}}");
+
+    let repaired = jsonrepair(&input).unwrap();
+
+    assert_eq!(repaired.len(), input.len());
+    assert!(repaired.starts_with("{\"payload\":\""));
+    assert!(repaired.ends_with("\"}"));
+    let parsed: serde_json::Value = serde_json::from_str(&repaired).unwrap();
+    assert_eq!(parsed["payload"].as_str().unwrap().len(), payload.len());
+}
+
+#[test]
+fn many_block_comments_are_stripped_without_panic() {
+    let input = format!("[0,{}1]", "/* hostile comment */".repeat(4 * 1024));
+
+    assert_eq!(jsonrepair(&input).unwrap(), "[0,1]");
+}
+
+#[test]
+fn repeated_repairable_invalid_escapes_are_normalized() {
+    let escape_count = 4 * 1024;
+    let input = format!("\"{}\"", "\\a".repeat(escape_count));
+
+    let repaired = jsonrepair(&input).unwrap();
+
+    assert_eq!(repaired.len(), escape_count + 2);
+    let parsed: String = serde_json::from_str(&repaired).unwrap();
+    assert_eq!(parsed, "a".repeat(escape_count));
+}
+
+#[test]
+fn repeated_invalid_unicode_escapes_return_clear_error() {
+    use jsonrepair_rs::JsonRepairErrorKind;
+
+    let input = format!("\"{}\"", "\\uZ000".repeat(512));
+    let err = jsonrepair(&input).unwrap_err();
+
+    assert_eq!(err.kind, JsonRepairErrorKind::InvalidUnicode);
+    assert_eq!(err.position, 1);
+    assert!(err.message.contains("\\uZ000"));
+}
+
+#[test]
+fn long_truncated_array_in_object_is_closed_without_panic() {
+    let item_count = 4 * 1024;
+    let input = format!("{{items:[{}", "1,".repeat(item_count));
+    let expected = format!("{{\"items\":[{}]}}", vec!["1"; item_count].join(","));
+
+    assert_eq!(jsonrepair(&input).unwrap(), expected);
+}
