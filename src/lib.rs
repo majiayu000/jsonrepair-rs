@@ -27,6 +27,8 @@ mod chars;
 mod error;
 mod parser;
 
+#[cfg(feature = "serde")]
+pub use error::JsonRepairParseError;
 pub use error::{JsonRepairError, JsonRepairErrorKind};
 
 /// Repair a broken JSON string, returning valid JSON.
@@ -52,4 +54,24 @@ pub use error::{JsonRepairError, JsonRepairErrorKind};
 pub fn jsonrepair(input: &str) -> Result<String, JsonRepairError> {
     let repairer = parser::JsonRepairer::new(input);
     repairer.repair()
+}
+
+/// Repair a broken JSON string and parse it into [`serde_json::Value`].
+///
+/// This helper is available with the `serde` feature.
+#[cfg(feature = "serde")]
+pub fn jsonrepair_value(input: &str) -> Result<serde_json::Value, JsonRepairParseError> {
+    jsonrepair_parse(input)
+}
+
+/// Repair a broken JSON string and deserialize it into the requested type.
+///
+/// This helper is available with the `serde` feature.
+#[cfg(feature = "serde")]
+pub fn jsonrepair_parse<T>(input: &str) -> Result<T, JsonRepairParseError>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let repaired = jsonrepair(input)?;
+    serde_json::from_str(&repaired).map_err(JsonRepairParseError::from)
 }

@@ -162,10 +162,25 @@ cargo run --example repair_and_parse
 
 | Feature | Default | Notes |
 | --- | --- | --- |
-| `serde` | No | Enables optional `serde` and `serde_json` dependencies. The public API remains string-based. |
+| `serde` | No | Enables optional `serde` and `serde_json` dependencies plus repair-and-parse helpers. |
 
 For most applications, add `serde_json` directly to your own `Cargo.toml` if you
 want to parse the repaired string into typed data.
+
+With the `serde` feature enabled, the crate also provides convenience helpers
+for repair-and-parse workflows:
+
+```rust
+use jsonrepair_rs::jsonrepair_value;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let value = jsonrepair_value("{name: 'Ada', active: True}")?;
+
+    assert_eq!(value["name"], "Ada");
+    assert_eq!(value["active"], true);
+    Ok(())
+}
+```
 
 ## Development
 
