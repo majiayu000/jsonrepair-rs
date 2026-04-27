@@ -77,8 +77,12 @@ pub fn jsonrepair(input: &str) -> Result<String, JsonRepairError>
 Exports:
 
 - `jsonrepair` repairs one input string.
+- `jsonrepair_to_writer` repairs one input string and writes the result to any
+  `std::io::Write`.
 - `JsonRepairError` contains `message`, `position`, `kind`, `line`, and `column`.
 - `JsonRepairErrorKind` is a non-exhaustive enum for programmatic error handling.
+- `JsonRepairWriteError` distinguishes repair failures from output write
+  failures in writer-based workflows.
 
 The output is valid JSON when the function returns `Ok(...)`. When the input
 cannot be repaired safely, the function returns an error instead of guessing.
