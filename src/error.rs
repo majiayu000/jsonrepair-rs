@@ -87,3 +87,48 @@ impl fmt::Display for JsonRepairError {
 }
 
 impl std::error::Error for JsonRepairError {}
+
+/// Error returned by serde-powered repair-and-parse helpers.
+#[cfg(feature = "serde")]
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum JsonRepairParseError {
+    /// The input could not be repaired safely.
+    Repair(JsonRepairError),
+    /// The repaired output could not be parsed as JSON.
+    Parse(serde_json::Error),
+}
+
+#[cfg(feature = "serde")]
+impl fmt::Display for JsonRepairParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Repair(err) => err.fmt(f),
+            Self::Parse(err) => write!(f, "failed to parse repaired JSON: {err}"),
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl std::error::Error for JsonRepairParseError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Repair(err) => Some(err),
+            Self::Parse(err) => Some(err),
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl From<JsonRepairError> for JsonRepairParseError {
+    fn from(err: JsonRepairError) -> Self {
+        Self::Repair(err)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl From<serde_json::Error> for JsonRepairParseError {
+    fn from(err: serde_json::Error) -> Self {
+        Self::Parse(err)
+    }
+}
