@@ -94,21 +94,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 pub fn jsonrepair(input: &str) -> Result<String, JsonRepairError>
 pub fn jsonrepair_to_writer<W>(input: &str, writer: &mut W) -> Result<(), JsonRepairWriteError>
 pub fn jsonrepair_reader_to_writer<R, W>(reader: R, writer: &mut W) -> Result<(), JsonRepairStreamError>
+pub fn jsonrepair_value(input: &str) -> Result<serde_json::Value, JsonRepairParseError>
+pub fn jsonrepair_parse<T>(input: &str) -> Result<T, JsonRepairParseError>
 ```
 
-Exports:
+| API | Feature | Returns | Failure modes |
+| --- | --- | --- | --- |
+| `jsonrepair(input)` | default | repaired JSON `String` | `JsonRepairError` when input cannot be repaired safely |
+| `jsonrepair_to_writer(input, writer)` | default | writes repaired JSON to `std::io::Write` | `JsonRepairWriteError::Repair` or `JsonRepairWriteError::Write` |
+| `jsonrepair_reader_to_writer(reader, writer)` | default | reads from `std::io::Read`, writes to `std::io::Write` | `JsonRepairStreamError::Read`, `Repair`, or `Write` |
+| `jsonrepair_value(input)` | `serde` | repaired `serde_json::Value` | `JsonRepairParseError::Repair` or `JsonRepairParseError::Parse` |
+| `jsonrepair_parse<T>(input)` | `serde` | repaired and deserialized `T` | `JsonRepairParseError::Repair` or `JsonRepairParseError::Parse` |
 
-- `jsonrepair` repairs one input string.
-- `jsonrepair_to_writer` repairs one input string and writes the result to any
-  `std::io::Write`.
-- `jsonrepair_reader_to_writer` repairs text from any `std::io::Read` and
-  writes the result to any `std::io::Write`.
-- `JsonRepairError` contains `message`, `position`, `kind`, `line`, and `column`.
-- `JsonRepairErrorKind` is a non-exhaustive enum for programmatic error handling.
-- `JsonRepairWriteError` distinguishes repair failures from output write
-  failures in writer-based workflows.
-- `JsonRepairStreamError` distinguishes input read failures, repair failures,
-  and output write failures in reader-to-writer workflows.
+Supporting types:
+
+- `JsonRepairError` contains `message`, `position`, `kind`, `line`, and
+  `column`.
+- `JsonRepairErrorKind` is a non-exhaustive enum for programmatic repair-error
+  handling.
+- `JsonRepairWriteError`, `JsonRepairStreamError`, and `JsonRepairParseError`
+  distinguish repair failures from IO or `serde_json` parse failures.
 
 The output is valid JSON when the function returns `Ok(...)`. When the input
 cannot be repaired safely, the function returns an error instead of guessing.
