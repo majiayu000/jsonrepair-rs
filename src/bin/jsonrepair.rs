@@ -1,7 +1,7 @@
 use std::{
     env,
     ffi::{OsStr, OsString},
-    fmt,
+    fmt, fs,
     fs::File,
     io::{self, Read},
     path::{Path, PathBuf},
@@ -70,11 +70,13 @@ fn run() -> Result<(), CliError> {
 
 fn repair_to_output(input: &mut dyn Read, output_path: Option<&Path>) -> Result<(), CliError> {
     if let Some(path) = output_path {
-        let mut output = File::create(path).map_err(|source| CliError::Io {
+        let mut repaired = Vec::new();
+        jsonrepair_reader_to_writer(input, &mut repaired)?;
+
+        fs::write(path, repaired).map_err(|source| CliError::Io {
             action: format!("failed to write {}", path.display()),
             source,
         })?;
-        jsonrepair_reader_to_writer(input, &mut output)?;
     } else {
         let stdout = io::stdout();
         let mut output = stdout.lock();
