@@ -278,6 +278,9 @@ Run Criterion benchmarks:
 cargo bench
 ```
 
+See [`docs/benchmarking.md`](docs/benchmarking.md) for CLI throughput reports,
+optional Rust competitor benchmarks, and allocation profiling commands.
+
 Current benchmark groups cover:
 
 - valid small JSON
