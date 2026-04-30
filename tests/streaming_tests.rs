@@ -34,6 +34,34 @@ fn matches_string_api_for_file_sized_input() {
 }
 
 #[test]
+fn chunk_boundary_cases_match_string_api() {
+    let cases = [
+        r#"{"text":"hello\nworld","quote":"a\"b"}"#,
+        "{\n// comment\nname:'Ada', active: True\n}",
+        "[.5, 2e, +.5, -Infinity]",
+        "{items:[1,2,], name:'Ada',}",
+        "{name:'Ada', nested:{items:[1,2,3}",
+        "{\"a\":1}\n{\"b\":2}\n[3,4]",
+    ];
+
+    for input in cases {
+        let expected = jsonrepair(input).unwrap();
+        for chunk_size in [1, 2, 3, 5, 8, 13] {
+            let mut reader = ChunkedReader::new(input.as_bytes(), chunk_size);
+            let mut output = Vec::new();
+
+            jsonrepair_reader_to_writer(&mut reader, &mut output).unwrap();
+
+            assert_eq!(
+                String::from_utf8(output).unwrap(),
+                expected,
+                "input {input:?} with chunk size {chunk_size}",
+            );
+        }
+    }
+}
+
+#[test]
 fn preserves_repair_errors_without_partial_output() {
     let mut input = Cursor::new(br#""\u00""#);
     let mut output = Vec::new();

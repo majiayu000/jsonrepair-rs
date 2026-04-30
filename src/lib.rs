@@ -31,6 +31,40 @@ mod parser;
 pub use error::JsonRepairParseError;
 pub use error::{JsonRepairError, JsonRepairErrorKind};
 
+/// Options controlling repair behavior.
+///
+/// The default policy keeps the historical forgiving behavior of
+/// [`jsonrepair`]. Use [`RepairOptions::strict`] when callers want valid JSON
+/// pass-through and an error for any input that would require repair.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct RepairOptions {
+    strict: bool,
+}
+
+impl RepairOptions {
+    /// Return the default forgiving repair policy.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Return an options value that rejects any input requiring repair.
+    pub fn strict() -> Self {
+        Self { strict: true }
+    }
+
+    /// Enable or disable strict mode.
+    pub fn with_strict(mut self, strict: bool) -> Self {
+        self.strict = strict;
+        self
+    }
+
+    /// Whether strict mode is enabled.
+    pub fn is_strict(&self) -> bool {
+        self.strict
+    }
+}
+
 /// Error returned by writer-based repair helpers.
 #[derive(Debug)]
 #[non_exhaustive]
@@ -111,7 +145,19 @@ pub fn jsonrepair_to_writer<W>(input: &str, writer: &mut W) -> Result<(), JsonRe
 where
     W: std::io::Write + ?Sized,
 {
-    let repaired = jsonrepair(input)?;
+    jsonrepair_to_writer_with_options(input, writer, RepairOptions::default())
+}
+
+/// Repair a broken JSON string using options and write the valid JSON to a writer.
+pub fn jsonrepair_to_writer_with_options<W>(
+    input: &str,
+    writer: &mut W,
+    options: RepairOptions,
+) -> Result<(), JsonRepairWriteError>
+where
+    W: std::io::Write + ?Sized,
+{
+    let repaired = jsonrepair_with_options(input, options)?;
     writer.write_all(repaired.as_bytes())?;
     Ok(())
 }
@@ -131,12 +177,26 @@ where
     R: std::io::Read,
     W: std::io::Write + ?Sized,
 {
+    jsonrepair_reader_to_writer_with_options(&mut reader, writer, RepairOptions::default())
+}
+
+/// Repair JSON-like text from a reader using options and write valid JSON to a writer.
+pub fn jsonrepair_reader_to_writer_with_options<R, W>(
+    mut reader: R,
+    writer: &mut W,
+    options: RepairOptions,
+) -> Result<(), JsonRepairStreamError>
+where
+    R: std::io::Read,
+    W: std::io::Write + ?Sized,
+{
     let mut input = String::new();
     reader
         .read_to_string(&mut input)
         .map_err(JsonRepairStreamError::Read)?;
 
-    let repaired = jsonrepair(&input).map_err(JsonRepairStreamError::Repair)?;
+    let repaired =
+        jsonrepair_with_options(&input, options).map_err(JsonRepairStreamError::Repair)?;
     writer
         .write_all(repaired.as_bytes())
         .map_err(JsonRepairStreamError::Write)?;
@@ -165,8 +225,26 @@ where
 ///
 /// Returns `Err(JsonRepairError)` if the input cannot be repaired.
 pub fn jsonrepair(input: &str) -> Result<String, JsonRepairError> {
+    jsonrepair_with_options(input, RepairOptions::default())
+}
+
+/// Repair a JSON string using explicit options.
+///
+/// With default options, this behaves exactly like [`jsonrepair`]. With
+/// [`RepairOptions::strict`], valid JSON is returned unchanged and any input
+/// that would require repair returns [`JsonRepairErrorKind::StrictModeViolation`].
+pub fn jsonrepair_with_options(
+    input: &str,
+    options: RepairOptions,
+) -> Result<String, JsonRepairError> {
     let repairer = parser::JsonRepairer::new(input);
-    repairer.repair()
+    let repaired = repairer.repair()?;
+
+    if options.strict {
+        reject_if_changed(input, &repaired)?;
+    }
+
+    Ok(repaired)
 }
 
 /// Repair a broken JSON string and parse it into [`serde_json::Value`].
@@ -177,6 +255,17 @@ pub fn jsonrepair_value(input: &str) -> Result<serde_json::Value, JsonRepairPars
     jsonrepair_parse(input)
 }
 
+/// Repair a broken JSON string using options and parse it into [`serde_json::Value`].
+///
+/// This helper is available with the `serde` feature.
+#[cfg(feature = "serde")]
+pub fn jsonrepair_value_with_options(
+    input: &str,
+    options: RepairOptions,
+) -> Result<serde_json::Value, JsonRepairParseError> {
+    jsonrepair_parse_with_options(input, options)
+}
+
 /// Repair a broken JSON string and deserialize it into the requested type.
 ///
 /// This helper is available with the `serde` feature.
@@ -185,6 +274,64 @@ pub fn jsonrepair_parse<T>(input: &str) -> Result<T, JsonRepairParseError>
 where
     T: serde::de::DeserializeOwned,
 {
-    let repaired = jsonrepair(input)?;
+    jsonrepair_parse_with_options(input, RepairOptions::default())
+}
+
+/// Repair a broken JSON string using options and deserialize it into the requested type.
+///
+/// This helper is available with the `serde` feature.
+#[cfg(feature = "serde")]
+pub fn jsonrepair_parse_with_options<T>(
+    input: &str,
+    options: RepairOptions,
+) -> Result<T, JsonRepairParseError>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let repaired = jsonrepair_with_options(input, options)?;
     serde_json::from_str(&repaired).map_err(JsonRepairParseError::from)
+}
+
+fn reject_if_changed(input: &str, repaired: &str) -> Result<(), JsonRepairError> {
+    if input == repaired {
+        return Ok(());
+    }
+
+    let position = first_difference(input, repaired);
+    let (line, column) = line_column(input, position);
+    Err(JsonRepairError::with_kind(
+        "Strict mode rejected input that requires JSON repair",
+        position,
+        JsonRepairErrorKind::StrictModeViolation,
+    )
+    .with_location(line, column))
+}
+
+fn first_difference(left: &str, right: &str) -> usize {
+    for (index, (left_char, right_char)) in left.chars().zip(right.chars()).enumerate() {
+        if left_char != right_char {
+            return index;
+        }
+    }
+
+    left.chars().count().min(right.chars().count())
+}
+
+fn line_column(input: &str, position: usize) -> (usize, usize) {
+    let mut line = 1;
+    let mut column = 1;
+
+    for (index, ch) in input.chars().enumerate() {
+        if index == position {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            column = 1;
+        } else {
+            column += 1;
+        }
+    }
+
+    (line, column)
 }

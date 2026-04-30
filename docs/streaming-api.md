@@ -93,3 +93,44 @@ implementation underneath. The parser would need explicit rollback windows for
 repairs such as trailing-comma removal and delayed delimiter insertion, plus a
 clear policy for whether repair failures may have already written partial
 output.
+
+## True Streaming Parser Design
+
+A lower-memory parser should move from "read all, repair all, write all" to an
+incremental state machine with explicit commit points. The high-level
+`jsonrepair_reader_to_writer` API can stay source-compatible, but the internal
+parser needs to know when bytes are safe to emit.
+
+Required parser states:
+
+| State | Responsibility | Rollback window |
+| --- | --- | --- |
+| Whitespace/comment scanner | Copy whitespace, skip comments, preserve line info | Until a comment end or newline confirms what to drop. |
+| String scanner | Normalize quotes, escapes, control characters, and missing end quotes | From opening quote through the next safe delimiter. |
+| Number scanner | Repair `.5`, `2.`, `2e`, signed non-finite values | Until token boundary confirms the number shape. |
+| Object scanner | Repair keys, colons, commas, values, and closing braces | At least one property plus trailing whitespace/comma. |
+| Array scanner | Repair commas, values, ellipsis, and closing brackets | At least one item plus trailing whitespace/comma. |
+| Root scanner | Detect NDJSON/root value lists, JSONP, markdown fences, redundant closers | Until the next root token proves list aggregation is needed. |
+
+Commit policy:
+
+1. Do not write partial output before a repair decision is irreversible.
+2. Keep a small pending-output buffer per nesting frame.
+3. Commit a frame only after delimiters, comments, and trailing commas are
+   resolved.
+4. On repair failure, return `JsonRepairStreamError::Repair` without writing
+   partial JSON unless a future API explicitly opts into partial output.
+
+Chunk-boundary tests should cover:
+
+- strings and escapes split at every byte position
+- comments split across `//`, `/*`, and `*/`
+- numbers split across sign, decimal point, exponent, and non-finite keyword
+- trailing commas split before and after whitespace
+- missing delimiters at EOF
+- NDJSON/root value aggregation across chunks
+
+The current tests already assert that a chunked reader produces exactly the same
+output as `jsonrepair(input)` for these categories. A parser rewrite should keep
+those tests and add lower-level state-machine tests before changing memory
+behavior.
