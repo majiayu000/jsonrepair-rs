@@ -23,6 +23,11 @@ Options:
   -o, --output PATH   Write repaired JSON to PATH instead of stdout.
   -h, --help          Print help.
   -V, --version       Print version.
+
+Exit Codes:
+  0                   Repaired successfully or printed help/version.
+  1                   Repair, input, or output error.
+  2                   Command-line usage error.
 ";
 
 fn main() {
