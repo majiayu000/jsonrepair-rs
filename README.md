@@ -319,8 +319,7 @@ instead of reporting a false regression.
 
 ## Release Status
 
-This branch prepares `0.2.0`. The latest crate published on crates.io remains
-`0.1.1` until the release is published.
+The latest crate published on crates.io is `0.2.0`.
 
 To publish a new release, first bump the version in `Cargo.toml` and update any
 version references in this README. Then follow
@@ -339,6 +338,9 @@ cargo publish --dry-run
 
 If the dry run succeeds, publish with `cargo publish` and create a matching git
 tag/release.
+
+See [`docs/ecosystem-evaluations.md`](docs/ecosystem-evaluations.md) for the
+planned order of binary distribution, WASM/npm bindings, and Python bindings.
 
 ## License
 
