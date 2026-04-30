@@ -18,6 +18,8 @@ pub enum JsonRepairErrorKind {
     MaxDepthExceeded,
     /// Invalid control character in string.
     InvalidCharacter,
+    /// Strict mode rejected input that required a repair.
+    StrictModeViolation,
 }
 
 /// Error returned when JSON cannot be repaired.

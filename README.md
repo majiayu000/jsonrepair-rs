@@ -92,19 +92,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ```rust
 pub fn jsonrepair(input: &str) -> Result<String, JsonRepairError>
+pub fn jsonrepair_with_options(input: &str, options: RepairOptions) -> Result<String, JsonRepairError>
 pub fn jsonrepair_to_writer<W>(input: &str, writer: &mut W) -> Result<(), JsonRepairWriteError>
+pub fn jsonrepair_to_writer_with_options<W>(input: &str, writer: &mut W, options: RepairOptions) -> Result<(), JsonRepairWriteError>
 pub fn jsonrepair_reader_to_writer<R, W>(reader: R, writer: &mut W) -> Result<(), JsonRepairStreamError>
+pub fn jsonrepair_reader_to_writer_with_options<R, W>(reader: R, writer: &mut W, options: RepairOptions) -> Result<(), JsonRepairStreamError>
 pub fn jsonrepair_value(input: &str) -> Result<serde_json::Value, JsonRepairParseError>
+pub fn jsonrepair_value_with_options(input: &str, options: RepairOptions) -> Result<serde_json::Value, JsonRepairParseError>
 pub fn jsonrepair_parse<T>(input: &str) -> Result<T, JsonRepairParseError>
+pub fn jsonrepair_parse_with_options<T>(input: &str, options: RepairOptions) -> Result<T, JsonRepairParseError>
 ```
 
 | API | Feature | Returns | Failure modes |
 | --- | --- | --- | --- |
 | `jsonrepair(input)` | default | repaired JSON `String` | `JsonRepairError` when input cannot be repaired safely |
+| `jsonrepair_with_options(input, options)` | default | repaired JSON `String` with explicit policy | `JsonRepairError`, including `StrictModeViolation` in strict mode |
 | `jsonrepair_to_writer(input, writer)` | default | writes repaired JSON to `std::io::Write` | `JsonRepairWriteError::Repair` or `JsonRepairWriteError::Write` |
+| `jsonrepair_to_writer_with_options(input, writer, options)` | default | writes with explicit policy | `JsonRepairWriteError::Repair` or `JsonRepairWriteError::Write` |
 | `jsonrepair_reader_to_writer(reader, writer)` | default | reads from `std::io::Read`, writes to `std::io::Write` | `JsonRepairStreamError::Read`, `Repair`, or `Write` |
+| `jsonrepair_reader_to_writer_with_options(reader, writer, options)` | default | streams with explicit policy | `JsonRepairStreamError::Read`, `Repair`, or `Write` |
 | `jsonrepair_value(input)` | `serde` | repaired `serde_json::Value` | `JsonRepairParseError::Repair` or `JsonRepairParseError::Parse` |
+| `jsonrepair_value_with_options(input, options)` | `serde` | repaired `serde_json::Value` with explicit policy | `JsonRepairParseError::Repair` or `JsonRepairParseError::Parse` |
 | `jsonrepair_parse<T>(input)` | `serde` | repaired and deserialized `T` | `JsonRepairParseError::Repair` or `JsonRepairParseError::Parse` |
+| `jsonrepair_parse_with_options<T>(input, options)` | `serde` | repaired and deserialized `T` with explicit policy | `JsonRepairParseError::Repair` or `JsonRepairParseError::Parse` |
 
 Supporting types:
 
@@ -117,6 +127,8 @@ Supporting types:
 
 The output is valid JSON when the function returns `Ok(...)`. When the input
 cannot be repaired safely, the function returns an error instead of guessing.
+Use [`RepairOptions::strict`](docs/repair-options.md) when callers want valid
+JSON pass-through and an error for repairable non-standard input.
 
 The reader-to-writer API is streaming-oriented at the IO boundary, but the
 current parser still buffers complete input and repaired output internally. See

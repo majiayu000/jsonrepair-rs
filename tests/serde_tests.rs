@@ -1,6 +1,9 @@
 #![cfg(feature = "serde")]
 
-use jsonrepair_rs::{jsonrepair_parse, jsonrepair_value, JsonRepairParseError};
+use jsonrepair_rs::{
+    jsonrepair_parse, jsonrepair_parse_with_options, jsonrepair_value,
+    jsonrepair_value_with_options, JsonRepairErrorKind, JsonRepairParseError, RepairOptions,
+};
 
 #[test]
 fn repairs_and_returns_value() {
@@ -35,4 +38,26 @@ fn preserves_repair_errors() {
     let err = jsonrepair_value(r#""\u00""#).unwrap_err();
 
     assert!(matches!(err, JsonRepairParseError::Repair(_)));
+}
+
+#[test]
+fn strict_options_apply_to_serde_helpers() {
+    let value = jsonrepair_value_with_options(
+        r#"{"name": "Ada", "active": true}"#,
+        RepairOptions::strict(),
+    )
+    .unwrap();
+    assert_eq!(value["name"], "Ada");
+
+    let err = jsonrepair_parse_with_options::<User>(
+        "{name: 'Ada', active: True}",
+        RepairOptions::strict(),
+    )
+    .unwrap_err();
+
+    assert!(matches!(
+        err,
+        JsonRepairParseError::Repair(repair_err)
+            if repair_err.kind == JsonRepairErrorKind::StrictModeViolation
+    ));
 }
