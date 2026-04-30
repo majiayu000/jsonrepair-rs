@@ -210,10 +210,31 @@ Runnable examples live in `examples/`:
 ```bash
 cargo run --example repair_basic
 cargo run --example repair_and_parse
+cargo run --example llm_output
+cargo run --features serde --example llm_typed_parse
 ```
 
 `repair_basic` repairs and prints a malformed JSON-like string.
 `repair_and_parse` repairs a string and then parses it with `serde_json`.
+`llm_output` repairs an LLM-style response that has prose around a JSON-like
+object. The prose is preserved as strings in a valid JSON array, so callers can
+inspect or extract the object they need.
+`llm_typed_parse` repairs a markdown-fenced JSON object and deserializes it into
+a typed struct with the `serde` feature enabled.
+
+For a shell pipeline, pass fenced JSON through the CLI:
+
+````bash
+printf '```json
+{name: "Ada", active: True, skills: ["rust",],}
+```' | jsonrepair
+````
+
+This prints valid JSON for the fenced object:
+
+```json
+{"name": "Ada", "active": true, "skills": ["rust"]}
+```
 
 ## Feature Flags
 
