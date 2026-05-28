@@ -50,6 +50,11 @@ impl JsonRepairer {
                 has_leading_dot = true;
                 self.pos += 1;
 
+                if self.pos >= len || !chars::is_digit(self.chars[self.pos]) {
+                    self.pos = start;
+                    return Ok(false);
+                }
+
                 while self.pos < len && chars::is_digit(self.chars[self.pos]) {
                     self.pos += 1;
                 }
