@@ -258,6 +258,8 @@ object. The prose is preserved as strings in a valid JSON array, so callers can
 inspect or extract the object they need.
 `llm_typed_parse` repairs a markdown-fenced JSON object and deserializes it into
 a typed struct with the `serde` feature enabled.
+For production-style fallback patterns, see
+[`docs/llm-fallback-parsing.md`](docs/llm-fallback-parsing.md).
 
 For a shell pipeline, pass fenced JSON through the CLI:
 
