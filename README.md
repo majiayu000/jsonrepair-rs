@@ -15,6 +15,8 @@ truncated in transit. It is a Rust port inspired by
 [josdejong/jsonrepair](https://github.com/josdejong/jsonrepair).
 
 This crate provides both a library API and a small command-line binary.
+See [`FEATURE_PARITY.md`](FEATURE_PARITY.md) for a side-by-side comparison with
+the JavaScript `jsonrepair` and Python `json-repair` packages.
 
 ## Installation
 
