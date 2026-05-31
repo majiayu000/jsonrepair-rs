@@ -9,14 +9,37 @@
 
 Repair malformed JSON-like text and return valid JSON text.
 
-`jsonrepair-rs` is a Rust library for cleaning up JSON commonly produced by
-LLMs, copied from JavaScript/Python/MongoDB contexts, pasted from markdown, or
-truncated in transit. It is a Rust port inspired by
-[josdejong/jsonrepair](https://github.com/josdejong/jsonrepair).
+`jsonrepair-rs` is a Rust-native repair library for applications that receive
+structured JSON from LLMs, copied JavaScript/Python/MongoDB snippets, markdown
+code fences, logs, or truncated transport payloads. It is a Rust port inspired
+by [josdejong/jsonrepair](https://github.com/josdejong/jsonrepair), with broad
+compatibility goals against the JavaScript `jsonrepair` and Python
+`json-repair` ecosystems.
 
-This crate provides both a library API and a small command-line binary.
-See [`FEATURE_PARITY.md`](FEATURE_PARITY.md) for a side-by-side comparison with
-the JavaScript `jsonrepair` and Python `json-repair` packages.
+## Why This Crate
+
+- Rust library and CLI surfaces in one package.
+- No default dependencies; optional `serde` helpers are behind a feature flag.
+- Repair behavior covers quotes, commas, comments, markdown fences, truncated
+  JSON, JSONP, MongoDB wrappers, NDJSON, non-standard keywords, and more.
+- Strict mode lets callers reject input that would require repair.
+- Errors include kind, position, line, and column so callers can report failure
+  instead of silently dropping malformed data.
+
+## Trust And Limits
+
+- Repair behavior is covered by unit tests, CLI tests, writer/reader tests,
+  strict-mode tests, serde tests, fuzz harnesses, and upstream-style parity
+  fixtures.
+- The output is valid JSON when an API returns `Ok(...)`; unrecoverable input
+  returns a typed error instead of a guessed repair.
+- The reader-to-writer API is streaming-oriented at the IO boundary, but the
+  current parser still buffers internally. See [`docs/streaming-api.md`](docs/streaming-api.md).
+- This crate does not do schema-guided repair or schema validation. Validate
+  repaired data against your application's schema before using it.
+- See [`FEATURE_PARITY.md`](FEATURE_PARITY.md) for a side-by-side comparison
+  with JS/Python repair libraries and [`docs/competitor-comparison.md`](docs/competitor-comparison.md)
+  for local comparison tooling.
 
 ## Installation
 
