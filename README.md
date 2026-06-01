@@ -51,7 +51,7 @@ Or add it manually:
 
 ```toml
 [dependencies]
-jsonrepair-rs = "0.2.0"
+jsonrepair-rs = "0.2.1"
 ```
 
 Minimum supported Rust version: 1.70.
@@ -234,8 +234,8 @@ them outside this crate.
 - The crate preserves much of the original whitespace where possible.
 - It returns a repaired JSON string, not a `serde_json::Value`.
 - The `jsonrepair_reader_to_writer` API supports reader-to-writer workflows,
-  but `0.2.0` still buffers internally instead of performing constant-memory
-  repair.
+  but the current parser still buffers internally instead of performing
+  constant-memory repair.
 - It is designed for practical repair, not for accepting arbitrary unsafe input
   as if it were trustworthy. Validate the repaired data according to your
   application's schema before using it.
@@ -382,7 +382,7 @@ instead of reporting a false regression.
 
 ## Release Status
 
-The latest crate published on crates.io is `0.2.0`.
+The latest crate published on crates.io is `0.2.1`.
 
 To publish a new release, first bump the version in `Cargo.toml` and update any
 version references in this README. Then follow
