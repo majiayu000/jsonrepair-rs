@@ -9,6 +9,7 @@ keywords = ["json", "repair", "fix", "parser", "llm"]
 categories = ["parser-implementations", "encoding"]
 readme = "README.md"
 rust-version = "1.70"
+exclude = ["docs/assets/*"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"], optional = true }

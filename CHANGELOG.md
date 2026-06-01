@@ -21,6 +21,8 @@ Release notes suitable for a GitHub Release are also available at
 
 - Refreshed the README introduction to make the Rust-native positioning,
   trust signals, and known limits clear from the first screen.
+- Excluded the README card image from the published crate package while keeping
+  it rendered through a repository URL.
 
 ### Compatibility
 
