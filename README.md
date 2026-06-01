@@ -51,7 +51,7 @@ Or add it manually:
 
 ```toml
 [dependencies]
-jsonrepair-rs = "0.2.1"
+jsonrepair-rs = "0.2.0"
 ```
 
 Minimum supported Rust version: 1.70.
@@ -382,7 +382,8 @@ instead of reporting a false regression.
 
 ## Release Status
 
-The latest crate published on crates.io is `0.2.1`.
+The latest crate published on crates.io is `0.2.0`. The `0.2.1` release is
+prepared on `main` and waiting on crates.io token refresh before publishing.
 
 To publish a new release, first bump the version in `Cargo.toml` and update any
 version references in this README. Then follow
