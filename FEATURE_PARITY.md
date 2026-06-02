@@ -79,6 +79,9 @@ call that out.
   See `docs/streaming-api.md`.
 - There is no schema-guided repair mode like Python `json-repair`'s beta JSON
   Schema/Pydantic support.
+- The next milestone decision currently defers true streaming and schema-guided
+  repair until there is stronger usage evidence. See
+  `docs/next-milestone-decision.md`.
 - There is no browser/WASM playground or npm wrapper yet. See
   `docs/ecosystem-evaluations.md`.
 - The parity fixture corpus is representative, not exhaustive. Add cases to
