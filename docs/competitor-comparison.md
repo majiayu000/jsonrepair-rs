@@ -4,6 +4,9 @@
 `tests/fixtures/parity_cases.json`. The corpus is used by Rust tests and can
 also be replayed against nearby JSON repair libraries.
 
+The current checked-in report is
+[`docs/reports/competitor-comparison.md`](reports/competitor-comparison.md).
+
 ## Generate A Report
 
 Run the local crate plus any available optional competitors:
