@@ -7,6 +7,8 @@ Release notes suitable for a GitHub Release are also available at
 
 ### Fixed
 
+- Reject plus-prefixed exponent-only tokens that cannot form valid JSON
+  numbers (#65).
 - Repair truncated LLM JSON string snapshots that end after the first slash of
   a URL-like `https:/` value.
 
