@@ -17,29 +17,29 @@ Measured iterations per adapter/case: `20`
 
 | Adapter | Case | Input bytes | Median ms | Min ms | Max ms | Throughput MiB/s | Status | Note |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| jsonrepair-rs | valid_small | 47 | 3.683 | 3.282 | 4.126 | 0.01 | ok |  |
-| jsonrepair-rs | broken_small | 48 | 4.149 | 3.463 | 5.767 | 0.01 | ok |  |
-| jsonrepair-rs | valid_large_1k | 46670 | 4.533 | 4.115 | 7.613 | 9.82 | ok |  |
-| jsonrepair-rs | broken_large_1k | 47670 | 4.696 | 4.033 | 5.426 | 9.68 | ok |  |
-| jsonrepair-rs | nested_100 | 200 | 4.037 | 3.661 | 6.912 | 0.05 | ok |  |
-| jsonrepair-rs | comments_100 | 3188 | 4.281 | 3.700 | 28.848 | 0.71 | ok |  |
-| jsonrepair-rs | string_escapes_200 | 5401 | 5.008 | 4.049 | 23.900 | 1.03 | ok |  |
-| python-json-repair | valid_small | 47 | 60.453 | 57.596 | 76.492 | 0.00 | ok |  |
-| python-json-repair | broken_small | 48 | 61.253 | 57.807 | 211.183 | 0.00 | ok |  |
-| python-json-repair | valid_large_1k | 46670 | 67.295 | 63.998 | 82.545 | 0.66 | ok |  |
-| python-json-repair | broken_large_1k | 47670 | 89.000 | 82.153 | 300.765 | 0.51 | ok |  |
-| python-json-repair | nested_100 | 200 | 64.433 | 58.452 | 72.661 | 0.00 | ok |  |
-| python-json-repair | comments_100 | 3188 | 67.027 | 57.825 | 155.210 | 0.05 | ok |  |
-| python-json-repair | string_escapes_200 | 5401 | 69.739 | 58.948 | 128.530 | 0.07 | ok |  |
+| jsonrepair-rs | valid_small | 47 | 4.024 | 3.253 | 5.129 | 0.01 | ok |  |
+| jsonrepair-rs | broken_small | 48 | 3.596 | 3.262 | 8.388 | 0.01 | ok |  |
+| jsonrepair-rs | valid_large_1k | 46670 | 4.462 | 4.079 | 6.269 | 9.98 | ok |  |
+| jsonrepair-rs | broken_large_1k | 47670 | 4.549 | 4.012 | 6.534 | 9.99 | ok |  |
+| jsonrepair-rs | nested_100 | 200 | 3.813 | 3.375 | 6.228 | 0.05 | ok |  |
+| jsonrepair-rs | comments_100 | 3188 | 3.720 | 3.329 | 10.425 | 0.82 | ok |  |
+| jsonrepair-rs | string_escapes_200 | 5401 | 3.882 | 3.443 | 5.709 | 1.33 | ok |  |
+| python-json-repair | valid_small | 47 | 54.629 | 51.719 | 80.348 | 0.00 | ok |  |
+| python-json-repair | broken_small | 48 | 54.400 | 52.383 | 77.061 | 0.00 | ok |  |
+| python-json-repair | valid_large_1k | 46670 | 56.819 | 55.352 | 68.502 | 0.78 | ok |  |
+| python-json-repair | broken_large_1k | 47670 | 76.357 | 74.040 | 97.843 | 0.60 | ok |  |
+| python-json-repair | nested_100 | 200 | 56.838 | 52.920 | 68.792 | 0.00 | ok |  |
+| python-json-repair | comments_100 | 3188 | 55.749 | 52.972 | 124.548 | 0.05 | ok |  |
+| python-json-repair | string_escapes_200 | 5401 | 54.871 | 52.594 | 90.096 | 0.09 | ok |  |
 
 ## Current Hotspots
 
 Slowest median latency:
-- `python-json-repair` / `broken_large_1k`: 89.000 ms
-- `python-json-repair` / `string_escapes_200`: 69.739 ms
-- `python-json-repair` / `valid_large_1k`: 67.295 ms
+- `python-json-repair` / `broken_large_1k`: 76.357 ms
+- `python-json-repair` / `nested_100`: 56.838 ms
+- `python-json-repair` / `valid_large_1k`: 56.819 ms
 
 Lowest throughput among inputs >= 1 KiB:
 - `python-json-repair` / `comments_100`: 0.05 MiB/s
-- `python-json-repair` / `string_escapes_200`: 0.07 MiB/s
-- `python-json-repair` / `broken_large_1k`: 0.51 MiB/s
+- `python-json-repair` / `string_escapes_200`: 0.09 MiB/s
+- `python-json-repair` / `broken_large_1k`: 0.60 MiB/s

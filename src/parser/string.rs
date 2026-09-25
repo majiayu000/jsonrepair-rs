@@ -96,7 +96,7 @@ impl JsonRepairer {
                     .and_then(|idx| self.prev_non_whitespace_index(idx));
                 let prev_char = prev_non_ws.and_then(|idx| self.peek_at(idx));
 
-                if prev_char == Some(',') {
+                if prev_char == Some(',') && stop_at_index != prev_non_ws {
                     // {"a":"b,c,"d":"e"} -> stop at comma before quote.
                     self.pos = input_start;
                     self.output.truncate(output_start);
@@ -205,7 +205,7 @@ impl JsonRepairer {
             }
             _ => {
                 // Invalid escape: drop '\' and keep char.
-                self.output.push(esc);
+                self.push_string_char(esc);
                 self.pos += 1;
             }
         }
@@ -325,6 +325,13 @@ impl JsonRepairer {
 
         while self.pos > start && chars::is_whitespace(self.chars[self.pos - 1]) {
             self.pos -= 1;
+        }
+
+        // A whitespace-only token has no value. Form feed is trimmed here but
+        // is not consumed by parse_whitespace_and_comments. Returning false
+        // prevents the array parser from looping at an unchanged position.
+        if self.pos == start {
+            return Ok(false);
         }
 
         // Compare directly on char slice — no String allocation.
