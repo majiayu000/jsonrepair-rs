@@ -26,6 +26,16 @@ compatibility goals against the JavaScript `jsonrepair` and Python
 - Errors include kind, position, line, and column so callers can report failure
   instead of silently dropping malformed data.
 
+## Used By
+
+- [wecom-cli](https://github.com/WecomTeam/wecom-cli/blob/main/crates/wecom/Cargo.toml)
+  depends on `jsonrepair-rs` and considers its output alongside another repair
+  candidate for CLI-supplied JSON.
+- [OpenBitFun](https://github.com/GCWing/OpenBitFun/blob/main/src/crates/execution/tool-call-jsonrepair/README.md)
+  uses a local fork of `jsonrepair-rs` 0.2.1 for streamed tool-call arguments.
+  Its fork adds a policy that preserves `#`, `//`, and `/* ... */` in malformed
+  tool arguments instead of treating them as comments.
+
 ## Trust And Limits
 
 - Repair behavior is covered by unit tests, CLI tests, writer/reader tests,
@@ -51,7 +61,7 @@ Or add it manually:
 
 ```toml
 [dependencies]
-jsonrepair-rs = "0.2.1"
+jsonrepair-rs = "0.2.2"
 ```
 
 Minimum supported Rust version: 1.70.
@@ -339,7 +349,7 @@ cargo bench
 ```
 
 See [`docs/benchmarking.md`](docs/benchmarking.md) for CLI throughput reports,
-optional Rust competitor benchmarks, and allocation profiling commands.
+the Python `json-repair` CLI comparison, and allocation profiling commands.
 
 Current benchmark groups cover:
 
@@ -382,7 +392,8 @@ instead of reporting a false regression.
 
 ## Release Status
 
-The latest crate published on crates.io is `0.2.1`.
+Check [crates.io](https://crates.io/crates/jsonrepair-rs) for the latest
+published version.
 
 To publish a new release, first bump the version in `Cargo.toml` and update any
 version references in this README. Then follow

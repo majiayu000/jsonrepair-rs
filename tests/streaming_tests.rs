@@ -62,6 +62,21 @@ fn chunk_boundary_cases_match_string_api() {
 }
 
 #[test]
+fn repairs_truncated_llm_url_across_reader_chunks() {
+    let input = r##"{"content":"# Heading\nhttps:/"##;
+    let expected = r##"{"content":"# Heading\nhttps:/"}"##;
+    for chunk_size in [1, 2, 3, 5] {
+        let mut output = Vec::new();
+        jsonrepair_reader_to_writer(
+            ChunkedReader::new(input.as_bytes(), chunk_size),
+            &mut output,
+        )
+        .unwrap();
+        assert_eq!(output, expected.as_bytes(), "chunk size {chunk_size}");
+    }
+}
+
+#[test]
 fn preserves_repair_errors_without_partial_output() {
     let mut input = Cursor::new(br#""\u00""#);
     let mut output = Vec::new();

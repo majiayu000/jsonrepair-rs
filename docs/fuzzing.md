@@ -1,7 +1,10 @@
 # Fuzzing
 
-This repository includes a cargo-fuzz target for the public repair parser entry
-point.
+This repository includes two cargo-fuzz targets. `repair_parser` exercises the
+public string repair entry point. `repair_stream` compares chunked reader-to-writer
+repair with the string API and checks that repair failures write no partial output.
+The targets run for 60 seconds each in the scheduled and manually triggered
+`.github/workflows/fuzz.yml` workflow.
 
 ## Prerequisites
 
@@ -15,23 +18,28 @@ cargo install cargo-fuzz
 
 ```sh
 cargo +nightly fuzz build repair_parser
+cargo +nightly fuzz build repair_stream
 ```
 
 ## Run the fuzz target
 
 ```sh
 cargo +nightly fuzz run repair_parser
+cargo +nightly fuzz run repair_stream
 ```
 
 For a short local smoke run, cap the number of generated inputs:
 
 ```sh
 cargo +nightly fuzz run repair_parser -- -runs=1000
+cargo +nightly fuzz run repair_stream -- -runs=1000
 ```
 
 The target feeds arbitrary bytes through the `jsonrepair` entry point as lossy
 UTF-8 text and treats any panic as a bug. When repair succeeds, the repaired
-output must parse as `serde_json::Value`.
+output must parse as `serde_json::Value`. The stream target uses arbitrary text
+and chunk sizes from 1 to 32 bytes. It checks exact output equivalence on
+success and the `Repair` error with empty output on repair failure.
 
 If a crash is discovered, reduce the failing input with cargo-fuzz and add a
 regression test under `tests/repair_tests.rs` before fixing the parser.

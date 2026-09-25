@@ -116,9 +116,12 @@ impl JsonRepairer {
                 self.pos = quote_pos + 1;
             } else if stop_at_delimiter && chars::is_unquoted_string_delimiter(c) {
                 // URL like "https://..." should not stop at '/'.
-                if self.pos > input_start + 1
-                    && self.peek_at(self.pos.saturating_sub(1)) == Some(':')
-                    && self.looks_like_url_start(input_start + 1, self.pos)
+                if c == '/'
+                    && self.pos > input_start + 1
+                    && self.peek_at(self.pos - 1) == Some(':')
+                    && (self.looks_like_url_start(input_start + 1, self.pos)
+                        || (self.pos + 1 == self.chars.len()
+                            && self.ends_with_url_scheme(input_start + 1, self.pos)))
                 {
                     while self.peek().is_some_and(chars::is_url_char) {
                         self.output.push(self.chars[self.pos]);
@@ -358,6 +361,17 @@ impl JsonRepairer {
             || self.matches_at(start, "file://")
             || self.matches_at(start, "data://")
             || self.matches_at(start, "irc://")
+    }
+
+    fn ends_with_url_scheme(&self, start: usize, slash_idx: usize) -> bool {
+        [
+            "http:", "https:", "ftp:", "mailto:", "file:", "data:", "irc:",
+        ]
+        .iter()
+        .any(|scheme| {
+            slash_idx >= start + scheme.len()
+                && self.slice_eq(slash_idx - scheme.len(), slash_idx, scheme)
+        })
     }
 
     fn is_known_wrapper_function(&self, start: usize, end: usize) -> bool {
