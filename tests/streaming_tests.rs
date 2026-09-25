@@ -78,7 +78,7 @@ fn repairs_truncated_llm_url_across_reader_chunks() {
 
 #[test]
 fn preserves_repair_errors_without_partial_output() {
-    for input in [&br#""\u00""#[..], &b"[\x0c"[..]] {
+    for input in [&br#""\u00""#[..], &b"[\x0c"[..], &br#""\udfff""#[..]] {
         let mut output = Vec::new();
         let err = jsonrepair_reader_to_writer(Cursor::new(input), &mut output).unwrap_err();
 

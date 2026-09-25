@@ -17,6 +17,8 @@ Release notes suitable for a GitHub Release are also available at
 - Avoid recursive string-repair retries on escaped commas followed by an
   ambiguous quote.
 - Remove the pending root separator when a following fenced value is empty.
+- Reject isolated UTF-16 surrogate escapes instead of returning a string that
+  downstream JSON parsers cannot decode. Valid surrogate pairs remain intact.
 
 ### Compatibility
 

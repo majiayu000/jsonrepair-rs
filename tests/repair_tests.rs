@@ -370,6 +370,17 @@ fn invalid_escape_before_control_character_is_escaped_in_output() {
 }
 
 #[test]
+fn isolated_unicode_surrogates_return_invalid_unicode_error() {
+    use jsonrepair_rs::JsonRepairErrorKind;
+
+    for input in [r#""\udfff""#, r#""\ud83d""#, r#""\ud83d\u0041""#] {
+        let error = jsonrepair(input).expect_err("isolated surrogate must fail");
+        assert_eq!(error.kind, JsonRepairErrorKind::InvalidUnicode);
+    }
+    ok(r#""\ud83d\ude00""#, r#""\ud83d\ude00""#);
+}
+
+#[test]
 fn escaped_comma_does_not_cause_recursive_string_retry() {
     let input = "'\\,'?";
     if let Ok(repaired) = jsonrepair(input) {
