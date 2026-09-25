@@ -38,9 +38,10 @@ cargo +nightly fuzz run repair_stream -- -runs=1000
 The target feeds arbitrary bytes through the `jsonrepair` entry point as lossy
 UTF-8 text and treats any panic as a bug. When repair succeeds, the repaired
 output must parse as `serde_json::Value`. The fuzz harness enables
-`serde_json`'s `arbitrary_precision` feature so syntactically valid numbers
-with very large exponents are not rejected as out-of-range floating-point
-values. The stream target uses arbitrary text
+`serde_json`'s `arbitrary_precision` and `unbounded_depth` features so valid
+large exponents and container nesting within the repairer's depth limit are
+not rejected by the validator's numeric or default depth limits. The stream
+target uses arbitrary text
 and chunk sizes from 1 to 32 bytes. It checks exact output equivalence on
 success and the `Repair` error with empty output on repair failure.
 

@@ -70,6 +70,7 @@ version = "0.0.0"
 dependencies = [
  "jsonrepair-rs",
  "libfuzzer-sys",
+ "serde",
  "serde_json",
 ]
 

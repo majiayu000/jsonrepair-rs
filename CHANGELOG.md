@@ -22,6 +22,8 @@ Release notes suitable for a GitHub Release are also available at
 
 - This is a source-compatible patch release. Public APIs and error types are
   unchanged.
+- The fuzz validator now accepts JSON numbers and nesting depths supported by
+  the repairer, avoiding false failures from `serde_json` default limits.
 
 ## 0.2.2 - 2026-09-25
 
