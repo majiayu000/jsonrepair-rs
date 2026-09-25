@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.2 - 2026-09-25
+
+Release notes suitable for a GitHub Release are also available at
+[`docs/releases/v0.2.2.md`](docs/releases/v0.2.2.md).
+
+### Fixed
+
+- Repair truncated LLM JSON string snapshots that end after the first slash of
+  a URL-like `https:/` value.
+
+### Added
+
+- Add fuzz coverage for chunked reader-to-writer repair and scheduled fuzz runs.
+- Add a reproducible CLI-level timing comparison with Python `json-repair`.
+
+### Compatibility
+
+- This is a source-compatible patch release. The reader-to-writer API still
+  buffers internally; it does not perform constant-memory streaming.
+
 ## 0.2.1 - 2026-06-01
 
 Release notes suitable for a GitHub Release are also available at

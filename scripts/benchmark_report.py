@@ -5,16 +5,21 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import importlib.metadata
+import importlib.util
+import json
+import platform
 import shutil
 import statistics
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-LOCAL_BIN = ROOT / "target" / "debug" / "jsonrepair"
+LOCAL_BIN = ROOT / "target" / "release" / "jsonrepair"
 
 
 @dataclass(frozen=True)
@@ -49,10 +54,9 @@ class Measurement:
 def main() -> int:
     args = parse_args()
     cases = build_cases()
+    if args.build_local and "jsonrepair-rs" in args.adapters.split(","):
+        subprocess.run(["cargo", "build", "--release", "--quiet", "--bin", "jsonrepair"], cwd=ROOT, check=True)
     adapters = select_adapters(args.adapters)
-
-    if args.build_local and any(adapter.name == "jsonrepair-rs" for adapter in adapters):
-        subprocess.run(["cargo", "build", "--quiet", "--bin", "jsonrepair"], cwd=ROOT, check=True)
 
     measurements: list[Measurement] = []
     for adapter in adapters:
@@ -89,12 +93,12 @@ def main() -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Benchmark representative JSON repair inputs against optional Rust competitors."
+        description="Benchmark representative JSON repair inputs through CLI adapters."
     )
     parser.add_argument(
         "--adapters",
         default="jsonrepair-rs,llm-json",
-        help="comma-separated adapters to run. Available: jsonrepair-rs, llm-json",
+        help="comma-separated adapters to run. Available: jsonrepair-rs, python-json-repair, llm-json",
     )
     parser.add_argument("--iterations", type=int, default=30, help="measured iterations per adapter/case")
     parser.add_argument("--warmups", type=int, default=3, help="warmup iterations per adapter/case")
@@ -104,7 +108,7 @@ def parse_args() -> argparse.Namespace:
         "--no-build-local",
         action="store_false",
         dest="build_local",
-        help="do not build target/debug/jsonrepair before running the local adapter",
+        help="do not build target/release/jsonrepair before running the local adapter",
     )
     return parser.parse_args()
 
@@ -153,6 +157,12 @@ def select_adapters(raw: str) -> list[Adapter]:
             available=shutil.which("llm_json") is not None,
             note="llm_json not found on PATH",
         ),
+        "python-json-repair": lambda: Adapter(
+            name="python-json-repair",
+            command=[sys.executable, "-m", "json_repair"],
+            available=importlib.util.find_spec("json_repair") is not None,
+            note="install with python3 -m pip install json-repair",
+        ),
     }
     unknown = sorted(set(selected) - set(known))
     if unknown:
@@ -187,6 +197,10 @@ def run_case(adapter: Adapter, case: Case, warmups: int, iterations: int, timeou
                 "error",
                 (proc.stderr or proc.stdout).strip().splitlines()[0],
             )
+        try:
+            json.loads(proc.stdout)
+        except ValueError:
+            return empty_measurement(adapter, case, iterations, "error", "output is not valid JSON")
         if index >= warmups:
             times.append(elapsed_ms)
 
@@ -234,6 +248,14 @@ def render_report(measurements: list[Measurement], iterations: int) -> str:
         "",
         "This report times representative repair inputs through CLI adapters. It is intended",
         "for local comparison and trend inspection, not as a stable CI gate.",
+        "Each invocation starts a new process; results include Python interpreter and Rust CLI startup,",
+        "stdin/stdout, repair, and JSON serialization. They are not library-call timings.",
+        "Adapters can choose different valid repairs; this report checks JSON validity, not semantic parity.",
+        "System load, CPU time, and peak memory were not measured.",
+        "",
+        f"Platform: `{platform.platform()}`; CPU: `{platform.processor() or platform.machine()}`; Python: `{platform.python_version()}`; json-repair: `{python_repair_version()}`",
+        f"Rust: `{rust_version()}`",
+        "Rust adapter: optimized `cargo build --release` binary from this checkout.",
         "",
         f"Measured iterations per adapter/case: `{iterations}`",
         "",
@@ -272,6 +294,21 @@ def render_report(measurements: list[Measurement], iterations: int) -> str:
             )
 
     return "\n".join(lines) + "\n"
+
+
+def python_repair_version() -> str:
+    try:
+        return importlib.metadata.version("json-repair")
+    except importlib.metadata.PackageNotFoundError:
+        return "not installed"
+
+
+def rust_version() -> str:
+    try:
+        result = subprocess.run(["rustc", "--version"], capture_output=True, text=True, check=True)
+        return result.stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return "unavailable"
 
 
 if __name__ == "__main__":

@@ -321,6 +321,32 @@ fn truncated_nested() {
     ok(r#"{"a": [1, 2, {"b": 3"#, r#"{"a": [1, 2, {"b": 3}]}"#);
 }
 
+#[test]
+fn llm_stream_prefix_ending_at_first_url_slash() {
+    ok(
+        r##"{"content":"# Heading\nhttps:/"##,
+        r##"{"content":"# Heading\nhttps:/"}"##,
+    );
+}
+
+#[test]
+fn llm_stream_string_prefixes_remain_repairable() {
+    let full =
+        r##"{"content":"# Heading\nhttps://example.com/path","items":[{"id":1,"name":"Ada"}]}"##;
+    for end in full
+        .char_indices()
+        .map(|(index, _)| index)
+        .skip(1)
+        .chain(std::iter::once(full.len()))
+    {
+        let prefix = &full[..end];
+        let repaired = jsonrepair_rs::jsonrepair(prefix)
+            .unwrap_or_else(|error| panic!("prefix {prefix:?} failed: {error}"));
+        serde_json::from_str::<serde_json::Value>(&repaired)
+            .unwrap_or_else(|error| panic!("prefix {prefix:?} produced invalid JSON: {error}"));
+    }
+}
+
 // ── 13. Markdown code fences ─────────────────────────────────
 
 #[test]
