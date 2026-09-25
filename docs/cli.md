@@ -59,15 +59,19 @@ Use `-` as an explicit stdin placeholder:
 cat broken.json | jsonrepair - --output repaired.json
 ```
 
-Handle usage errors separately from repair or IO errors:
+In a script, handle usage errors separately from repair or IO errors while
+preserving the original exit code:
 
 ```bash
-if ! jsonrepair "$input" --output "$output"; then
+if jsonrepair "$input" --output "$output"; then
+  : # repaired successfully
+else
   code=$?
   if [ "$code" -eq 2 ]; then
     echo "invalid jsonrepair command line" >&2
   else
     echo "jsonrepair could not repair or write the document" >&2
   fi
+  exit "$code"
 fi
 ```
