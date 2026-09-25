@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.2.3 - 2026-09-25
+
+Release notes suitable for a GitHub Release are also available at
+[`docs/releases/v0.2.3.md`](docs/releases/v0.2.3.md).
+
+### Fixed
+
+- Return an error for unsupported whitespace-only array values instead of
+  looping without advancing the parser and exhausting memory. The case was
+  found by the first manual run of the new fuzz workflow after 0.2.2 was published.
+- Keep earlier root-list separators when removing the last pending separator,
+  so successful repairs remain valid JSON.
+- Escape control characters following an invalid backslash escape instead of
+  returning a string containing invalid JSON control bytes.
+- Avoid recursive string-repair retries on escaped commas followed by an
+  ambiguous quote.
+- Remove the pending root separator when a following fenced value is empty.
+- Reject isolated UTF-16 surrogate escapes instead of returning a string that
+  downstream JSON parsers cannot decode. Valid surrogate pairs remain intact.
+
+### Compatibility
+
+- This is a source-compatible patch release. Public APIs and error types are
+  unchanged.
+- The fuzz validator now accepts JSON numbers and nesting depths supported by
+  the repairer, avoiding false failures from `serde_json` default limits.
+
 ## 0.2.2 - 2026-09-25
 
 Release notes suitable for a GitHub Release are also available at

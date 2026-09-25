@@ -96,7 +96,7 @@ impl JsonRepairer {
                     .and_then(|idx| self.prev_non_whitespace_index(idx));
                 let prev_char = prev_non_ws.and_then(|idx| self.peek_at(idx));
 
-                if prev_char == Some(',') {
+                if prev_char == Some(',') && stop_at_index != prev_non_ws {
                     // {"a":"b,c,"d":"e"} -> stop at comma before quote.
                     self.pos = input_start;
                     self.output.truncate(output_start);
@@ -176,6 +176,47 @@ impl JsonRepairer {
                 }
 
                 if digits == 4 {
+                    let code_unit = self.hex_quad(self.pos + 1).ok_or_else(|| {
+                        self.error_at_kind(
+                            "Invalid unicode escape",
+                            backslash_pos,
+                            JsonRepairErrorKind::InvalidUnicode,
+                        )
+                    })?;
+                    if (0xD800..=0xDBFF).contains(&code_unit) {
+                        let next = self.pos + 5;
+                        let low = if self.peek_at(next) == Some('\\')
+                            && self.peek_at(next + 1) == Some('u')
+                        {
+                            self.hex_quad(next + 2)
+                        } else {
+                            None
+                        };
+                        if !low.is_some_and(|unit| (0xDC00..=0xDFFF).contains(&unit)) {
+                            return Err(self.error_at_kind(
+                                "Invalid unicode surrogate pair",
+                                backslash_pos,
+                                JsonRepairErrorKind::InvalidUnicode,
+                            ));
+                        }
+                        self.output.push_str("\\u");
+                        for i in 0..4 {
+                            self.output.push(self.chars[self.pos + 1 + i]);
+                        }
+                        self.output.push_str("\\u");
+                        for i in 0..4 {
+                            self.output.push(self.chars[next + 2 + i]);
+                        }
+                        self.pos += 11;
+                        return Ok(());
+                    }
+                    if (0xDC00..=0xDFFF).contains(&code_unit) {
+                        return Err(self.error_at_kind(
+                            "Invalid unicode surrogate pair",
+                            backslash_pos,
+                            JsonRepairErrorKind::InvalidUnicode,
+                        ));
+                    }
                     self.output.push_str("\\u");
                     for i in 0..4 {
                         self.output.push(self.chars[self.pos + 1 + i]);
@@ -205,11 +246,20 @@ impl JsonRepairer {
             }
             _ => {
                 // Invalid escape: drop '\' and keep char.
-                self.output.push(esc);
+                self.push_string_char(esc);
                 self.pos += 1;
             }
         }
         Ok(())
+    }
+
+    fn hex_quad(&self, start: usize) -> Option<u16> {
+        let mut value = 0u16;
+        for offset in 0..4 {
+            let digit = self.peek_at(start + offset)?.to_digit(16)? as u16;
+            value = value * 16 + digit;
+        }
+        Some(value)
     }
 
     fn parse_string_char(&mut self, c: char) -> Result<()> {
@@ -325,6 +375,13 @@ impl JsonRepairer {
 
         while self.pos > start && chars::is_whitespace(self.chars[self.pos - 1]) {
             self.pos -= 1;
+        }
+
+        // A whitespace-only token has no value. Form feed is trimmed here but
+        // is not consumed by parse_whitespace_and_comments. Returning false
+        // prevents the array parser from looping at an unchanged position.
+        if self.pos == start {
+            return Ok(false);
         }
 
         // Compare directly on char slice — no String allocation.

@@ -3,6 +3,7 @@
 use std::io::{Cursor, Read};
 
 use libfuzzer_sys::fuzz_target;
+use serde::Deserialize;
 
 struct Chunked<R> {
     inner: R,
@@ -32,11 +33,19 @@ fuzz_target!(|data: &[u8]| {
     match (expected, actual) {
         (Ok(repaired), Ok(())) => {
             assert_eq!(output, repaired.as_bytes());
-            serde_json::from_slice::<serde_json::Value>(&output)
+            let mut deserializer = serde_json::Deserializer::from_slice(&output);
+            deserializer.disable_recursion_limit();
+            serde_json::Value::deserialize(&mut deserializer)
                 .expect("successful stream repairs must be valid JSON");
+            deserializer
+                .end()
+                .expect("repaired stream must have no trailing content");
         }
         (Err(_), Err(jsonrepair_rs::JsonRepairStreamError::Repair(_))) => {
-            assert!(output.is_empty(), "repair failure must not write partial output");
+            assert!(
+                output.is_empty(),
+                "repair failure must not write partial output"
+            );
         }
         (expected, actual) => panic!("string/stream result mismatch: {expected:?} vs {actual:?}"),
     }

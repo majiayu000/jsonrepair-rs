@@ -78,13 +78,13 @@ fn repairs_truncated_llm_url_across_reader_chunks() {
 
 #[test]
 fn preserves_repair_errors_without_partial_output() {
-    let mut input = Cursor::new(br#""\u00""#);
-    let mut output = Vec::new();
+    for input in [&br#""\u00""#[..], &b"[\x0c"[..], &br#""\udfff""#[..]] {
+        let mut output = Vec::new();
+        let err = jsonrepair_reader_to_writer(Cursor::new(input), &mut output).unwrap_err();
 
-    let err = jsonrepair_reader_to_writer(&mut input, &mut output).unwrap_err();
-
-    assert!(matches!(err, JsonRepairStreamError::Repair(_)));
-    assert!(output.is_empty());
+        assert!(matches!(err, JsonRepairStreamError::Repair(_)));
+        assert!(output.is_empty());
+    }
 }
 
 #[test]
