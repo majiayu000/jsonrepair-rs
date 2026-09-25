@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.4 - 2026-09-25
+
+Release notes suitable for a GitHub Release are also available at
+[`docs/releases/v0.2.4.md`](docs/releases/v0.2.4.md).
+
+### Changed
+
+- CI now checks the core library and CLI with Rust 1.70. The README clarifies
+  that the optional `serde` feature also depends on upstream Rust support.
+- The CLI scripting example preserves the command's original exit code after
+  reporting usage, repair, or IO errors.
+
+### Compatibility
+
+- No runtime behavior, public API, or error type changed from 0.2.3.
+
 ## 0.2.3 - 2026-09-25
 
 Release notes suitable for a GitHub Release are also available at
