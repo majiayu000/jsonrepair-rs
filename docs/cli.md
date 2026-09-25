@@ -62,7 +62,9 @@ cat broken.json | jsonrepair - --output repaired.json
 Handle usage errors separately from repair or IO errors:
 
 ```bash
-if ! jsonrepair "$input" --output "$output"; then
+if jsonrepair "$input" --output "$output"; then
+  : # repaired successfully
+else
   code=$?
   if [ "$code" -eq 2 ]; then
     echo "invalid jsonrepair command line" >&2

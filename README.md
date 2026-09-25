@@ -64,7 +64,9 @@ Or add it manually:
 jsonrepair-rs = "0.2.3"
 ```
 
-Minimum supported Rust version: 1.70.
+Minimum supported Rust version for the core library and CLI: 1.70. The optional
+`serde` feature also depends on the Rust versions supported by its upstream
+dependencies.
 
 ## Command Line
 
