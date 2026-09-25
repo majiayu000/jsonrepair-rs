@@ -62,7 +62,7 @@ helpers:
 
 ```toml
 [dependencies]
-jsonrepair-rs = { version = "0.2.3", features = ["serde"] }
+jsonrepair-rs = { version = "0.2.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ```
