@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.5 - 2026-09-26
+
+Release notes suitable for a GitHub Release are also available at
+[`docs/releases/v0.2.5.md`](docs/releases/v0.2.5.md).
+
+### Added
+
+- The optional `serde` feature now provides `jsonrepair_value_with_schema` for
+  best-effort correction of tool arguments after JSON syntax repair. It handles
+  numeric and boolean strings, unambiguous string enum casing, and non-null
+  singleton values where an array is expected, including nested `properties`
+  and `items`.
+
+### Compatibility
+
+- This is source-compatible with 0.2.4. Existing APIs, error types, and default
+  repair behavior are unchanged.
+- The new helper does not validate a full JSON Schema. Values it cannot
+  correct safely remain unchanged; callers should validate before use.
+
 ## 0.2.4 - 2026-09-25
 
 Release notes suitable for a GitHub Release are also available at
