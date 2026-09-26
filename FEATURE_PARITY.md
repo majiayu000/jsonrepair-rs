@@ -68,7 +68,8 @@ call that out.
 | Writer API | Node stream writes | File/CLI helpers | `std::io::Write` helper |
 | Reader-to-writer API | True streaming transform | File/CLI helpers and stream-stable option | IO convenience API, buffers internally |
 | Error location metadata | Error object | Python exceptions/errors | Error kind, position, line, and column |
-| Configurable policy | Stream buffer options | Strict/schema/formatting options | Strict mode only for now |
+| Configurable policy | Stream buffer options | Strict/schema/formatting options | Strict mode |
+| Schema-guided correction | No documented mode | Beta JSON Schema/Pydantic support | Limited `serde` helper; no validation |
 | Fuzzing harness | Not documented | Not documented | `fuzz/` plus regression tests |
 | Compatibility corpus | Upstream tests | Python tests/examples | `tests/fixtures/parity_cases.json` |
 
@@ -77,11 +78,10 @@ call that out.
 - The reader-to-writer APIs are streaming-oriented at the IO boundary, but the
   current parser still reads the full input and repaired output into memory.
   See `docs/streaming-api.md`.
-- There is no schema-guided repair mode like Python `json-repair`'s beta JSON
-  Schema/Pydantic support.
-- The next milestone decision currently defers true streaming and schema-guided
-  repair until there is stronger usage evidence. See
-  `docs/next-milestone-decision.md`.
+- The optional `serde` helper corrects a narrow JSON Schema subset, but there
+  is no full JSON Schema/Pydantic repair mode or schema validation.
+- `docs/next-milestone-decision.md` records the earlier decision to defer
+  broader schema-guided repair and true streaming.
 - There is no browser/WASM playground or npm wrapper yet. See
   `docs/ecosystem-evaluations.md`.
 - The parity fixture corpus is representative, not exhaustive. Add cases to

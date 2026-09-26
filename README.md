@@ -61,7 +61,7 @@ Or add it manually:
 
 ```toml
 [dependencies]
-jsonrepair-rs = "0.2.4"
+jsonrepair-rs = "0.2.5"
 ```
 
 Minimum supported Rust version for the core library and CLI: 1.70. The optional
