@@ -45,8 +45,8 @@ compatibility goals against the JavaScript `jsonrepair` and Python
   returns a typed error instead of a guessed repair.
 - The reader-to-writer API is streaming-oriented at the IO boundary, but the
   current parser still buffers internally. See [`docs/streaming-api.md`](docs/streaming-api.md).
-- This crate does not do schema-guided repair or schema validation. Validate
-  repaired data against your application's schema before using it.
+- The optional `serde` helper can correct a small set of schema-guided value
+  mismatches. It does not validate JSON Schema; validate its result before use.
 - See [`FEATURE_PARITY.md`](FEATURE_PARITY.md) for a side-by-side comparison
   with JS/Python repair libraries and [`docs/competitor-comparison.md`](docs/competitor-comparison.md)
   for local comparison tooling.
@@ -125,6 +125,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### Correct tool arguments with a schema
+
+Enable the `serde` feature to correct common value mismatches after JSON repair:
+
+```bash
+cargo add jsonrepair-rs --features serde
+cargo add serde_json
+```
+
+```rust
+use jsonrepair_rs::jsonrepair_value_with_schema;
+use serde_json::json;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "count": { "type": "integer" },
+            "active": { "type": "boolean" },
+            "tags": { "type": "array", "items": { "type": "string", "enum": ["Rust", "Go"] } }
+        }
+    });
+    let args = jsonrepair_value_with_schema(
+        r#"{"count":"5","active":"true","tags":"rust"}"#,
+        &schema,
+    )?;
+    assert_eq!(args, json!({ "count": 5, "active": true, "tags": ["Rust"] }));
+    Ok(())
+}
+```
+
+This helper supports numeric and boolean strings, an unambiguous ASCII
+case-insensitive match for string `enum` values, and non-null singleton values
+where an array is expected. It applies those corrections through `properties`
+and `items`. Other JSON Schema features are not interpreted; unmatched values
+remain unchanged. Validate the result against your full schema before executing
+a tool call.
+
 ## API
 
 ```rust
@@ -136,6 +174,7 @@ pub fn jsonrepair_reader_to_writer<R, W>(reader: R, writer: &mut W) -> Result<()
 pub fn jsonrepair_reader_to_writer_with_options<R, W>(reader: R, writer: &mut W, options: RepairOptions) -> Result<(), JsonRepairStreamError>
 pub fn jsonrepair_value(input: &str) -> Result<serde_json::Value, JsonRepairParseError>
 pub fn jsonrepair_value_with_options(input: &str, options: RepairOptions) -> Result<serde_json::Value, JsonRepairParseError>
+pub fn jsonrepair_value_with_schema(input: &str, schema: &serde_json::Value) -> Result<serde_json::Value, JsonRepairParseError>
 pub fn jsonrepair_parse<T>(input: &str) -> Result<T, JsonRepairParseError>
 pub fn jsonrepair_parse_with_options<T>(input: &str, options: RepairOptions) -> Result<T, JsonRepairParseError>
 ```
@@ -150,6 +189,7 @@ pub fn jsonrepair_parse_with_options<T>(input: &str, options: RepairOptions) -> 
 | `jsonrepair_reader_to_writer_with_options(reader, writer, options)` | default | streams with explicit policy | `JsonRepairStreamError::Read`, `Repair`, or `Write` |
 | `jsonrepair_value(input)` | `serde` | repaired `serde_json::Value` | `JsonRepairParseError::Repair` or `JsonRepairParseError::Parse` |
 | `jsonrepair_value_with_options(input, options)` | `serde` | repaired `serde_json::Value` with explicit policy | `JsonRepairParseError::Repair` or `JsonRepairParseError::Parse` |
+| `jsonrepair_value_with_schema(input, schema)` | `serde` | repaired value with supported schema corrections | `JsonRepairParseError::Repair` or `JsonRepairParseError::Parse` |
 | `jsonrepair_parse<T>(input)` | `serde` | repaired and deserialized `T` | `JsonRepairParseError::Repair` or `JsonRepairParseError::Parse` |
 | `jsonrepair_parse_with_options<T>(input, options)` | `serde` | repaired and deserialized `T` with explicit policy | `JsonRepairParseError::Repair` or `JsonRepairParseError::Parse` |
 
