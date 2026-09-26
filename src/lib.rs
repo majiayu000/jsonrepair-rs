@@ -266,6 +266,99 @@ pub fn jsonrepair_value_with_options(
     jsonrepair_parse_with_options(input, options)
 }
 
+/// Repair JSON-like text, then correct common value mismatches using a JSON Schema.
+///
+/// This opt-in helper supports `type` values `number`, `integer`, `boolean`, and
+/// `array`, string `enum` values, nested `properties`, and array `items`. It
+/// converts numeric and boolean strings, matches a string enum only when its
+/// ASCII case-insensitive match is unambiguous, and wraps a non-null singleton
+/// in an array. Values that cannot be corrected safely are left unchanged.
+///
+/// This is best-effort correction, not JSON Schema validation. Validate the
+/// returned value against the full schema before using it as tool arguments.
+/// This helper is available with the `serde` feature.
+#[cfg(feature = "serde")]
+pub fn jsonrepair_value_with_schema(
+    input: &str,
+    schema: &serde_json::Value,
+) -> Result<serde_json::Value, JsonRepairParseError> {
+    let mut value = jsonrepair_value(input)?;
+    correct_value_with_schema(&mut value, schema);
+    Ok(value)
+}
+
+#[cfg(feature = "serde")]
+fn correct_value_with_schema(value: &mut serde_json::Value, schema: &serde_json::Value) {
+    use serde_json::Value;
+
+    match schema.get("type").and_then(Value::as_str) {
+        Some("array") if !value.is_array() && !value.is_null() => {
+            *value = Value::Array(vec![std::mem::take(value)]);
+        }
+        Some(expected @ ("number" | "integer")) => {
+            if let Some(text) = value.as_str() {
+                if let Ok(number) = text.parse::<serde_json::Number>() {
+                    if expected == "number" || number.is_i64() || number.is_u64() {
+                        *value = Value::Number(number);
+                    }
+                }
+            }
+        }
+        Some("boolean") => {
+            if let Some(text) = value.as_str() {
+                if text.eq_ignore_ascii_case("true") {
+                    *value = Value::Bool(true);
+                } else if text.eq_ignore_ascii_case("false") {
+                    *value = Value::Bool(false);
+                }
+            }
+        }
+        _ => {}
+    }
+
+    if let (Some(object), Some(properties)) = (
+        value.as_object_mut(),
+        schema.get("properties").and_then(Value::as_object),
+    ) {
+        for (name, child) in object {
+            if let Some(child_schema) = properties.get(name) {
+                correct_value_with_schema(child, child_schema);
+            }
+        }
+    }
+
+    if let (Some(array), Some(items_schema)) = (value.as_array_mut(), schema.get("items")) {
+        for item in array {
+            correct_value_with_schema(item, items_schema);
+        }
+    }
+
+    if let Some(corrected) = matching_enum_string(value, schema) {
+        *value = Value::String(corrected);
+    }
+}
+
+#[cfg(feature = "serde")]
+fn matching_enum_string(value: &serde_json::Value, schema: &serde_json::Value) -> Option<String> {
+    let current = value.as_str()?;
+    let choices = schema.get("enum")?.as_array()?;
+    if choices.iter().any(|choice| choice == value) {
+        return None;
+    }
+
+    let mut matching = None;
+    for choice in choices.iter().filter_map(serde_json::Value::as_str) {
+        if choice.eq_ignore_ascii_case(current) {
+            match matching {
+                None => matching = Some(choice),
+                Some(previous) if previous == choice => {}
+                Some(_) => return None,
+            }
+        }
+    }
+    matching.map(str::to_owned)
+}
+
 /// Repair a broken JSON string and deserialize it into the requested type.
 ///
 /// This helper is available with the `serde` feature.
