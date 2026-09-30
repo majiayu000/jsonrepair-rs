@@ -639,6 +639,26 @@ fn truncated_url_after_text_preserves_path() {
 fn truncated_url_with_following_prose() {
     for (input, expected) in [
         (
+            r#"{"content":"see https://example.com/foo and/or more}"#,
+            r#"{"content":"see https://example.com/foo and/or more"}"#,
+        ),
+        (
+            r#"["see https://example.com/a%20b and/or more,1]"#,
+            r#"["see https://example.com/a%20b and/or more",1]"#,
+        ),
+        (
+            "{\"content\":\"# Heading\nhttps://example.com/foo and/or more}",
+            r##"{"content":"# Heading\nhttps://example.com/foo and/or more"}"##,
+        ),
+        (
+            r#"{"content":"see https://example.com/foo and/or more/"#,
+            r#"{"content":"see https://example.com/foo and/or more/"}"#,
+        ),
+        (
+            r#"{"content":"see https://example.com/foo and/or more"/* comment */}"#,
+            r#"{"content":"see https://example.com/foo and/or more"}"#,
+        ),
+        (
             r#"{"content":"see https://example.com/foo and more}"#,
             r#"{"content":"see https://example.com/foo and more"}"#,
         ),

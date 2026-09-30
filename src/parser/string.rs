@@ -39,6 +39,7 @@ impl JsonRepairer {
         let output_start = self.output.len();
         self.output.push('"');
         self.pos += 1;
+        let mut url_followed_by_content = false;
 
         loop {
             if self.at_end() {
@@ -114,7 +115,10 @@ impl JsonRepairer {
                 self.output.truncate(quote_output_pos);
                 self.output.push_str("\\\"");
                 self.pos = quote_pos + 1;
-            } else if stop_at_delimiter && chars::is_unquoted_string_delimiter(c) {
+            } else if stop_at_delimiter
+                && chars::is_unquoted_string_delimiter(c)
+                && !(c == '/' && url_followed_by_content)
+            {
                 // Keep a URL on the next line inside the truncated string.
                 if c == '\n' {
                     let mut next_start = self.pos + 1;
@@ -155,6 +159,8 @@ impl JsonRepairer {
                         .peek()
                         .is_some_and(|ch| !chars::is_unquoted_string_delimiter(ch))
                     {
+                        // Later slashes belong to the continuing quoted content.
+                        url_followed_by_content = true;
                         continue;
                     }
                 }

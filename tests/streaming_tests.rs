@@ -110,16 +110,29 @@ fn preserves_url_content_across_reader_chunks() {
 
 #[test]
 fn preserves_url_with_following_prose_across_reader_chunks() {
-    let input = r#"{"content":"see https://example.com/foo and more}"#;
-    let expected = r#"{"content":"see https://example.com/foo and more"}"#;
-    for chunk_size in 1..=5 {
-        let mut output = Vec::new();
-        jsonrepair_reader_to_writer(
-            ChunkedReader::new(input.as_bytes(), chunk_size),
-            &mut output,
-        )
-        .unwrap();
-        assert_eq!(output, expected.as_bytes(), "chunk size {chunk_size}");
+    for (input, expected) in [
+        (
+            r#"{"content":"see https://example.com/foo and/or more}"#,
+            r#"{"content":"see https://example.com/foo and/or more"}"#,
+        ),
+        (
+            r#"["see https://example.com/a%20b and/or more,1]"#,
+            r#"["see https://example.com/a%20b and/or more",1]"#,
+        ),
+        (
+            r#"{"content":"see https://example.com/foo and more}"#,
+            r#"{"content":"see https://example.com/foo and more"}"#,
+        ),
+    ] {
+        for chunk_size in 1..=5 {
+            let mut output = Vec::new();
+            jsonrepair_reader_to_writer(
+                ChunkedReader::new(input.as_bytes(), chunk_size),
+                &mut output,
+            )
+            .unwrap();
+            assert_eq!(output, expected.as_bytes(), "chunk size {chunk_size}");
+        }
     }
 }
 
