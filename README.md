@@ -282,7 +282,8 @@ them outside this crate.
 
 ## Limits And Behavior
 
-- Maximum supported nesting depth is 512.
+- Maximum parser nesting depth is 128, counting arrays, objects, JSONP/MongoDB
+  wrappers, recursive string concatenations, and nested Markdown fences together.
 - The crate preserves much of the original whitespace where possible.
 - It returns a repaired JSON string, not a `serde_json::Value`.
 - The `jsonrepair_reader_to_writer` API supports reader-to-writer workflows,

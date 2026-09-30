@@ -13,7 +13,8 @@ mod object;
 mod string;
 mod toplevel;
 
-const MAX_DEPTH: usize = 512;
+// Bound both containers and recursive repairs on a 2 MiB worker stack.
+const MAX_DEPTH: usize = 128;
 
 /// Recursive-descent JSON repair parser.
 /// Copy-on-repair: preserves original whitespace, only modifies what needs fixing.

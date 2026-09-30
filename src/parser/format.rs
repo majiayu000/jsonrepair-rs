@@ -9,6 +9,7 @@ impl JsonRepairer {
             return Ok(false);
         }
 
+        self.enter_container()?;
         self.pos += 3; // skip opening ```
 
         // Optional language tag: ```json
@@ -24,6 +25,7 @@ impl JsonRepairer {
 
         let processed_value = self.parse_value()?;
         if !processed_value {
+            self.leave_container();
             return Ok(false);
         }
 
@@ -33,6 +35,7 @@ impl JsonRepairer {
             self.pos += 3;
         }
 
+        self.leave_container();
         Ok(true)
     }
 
