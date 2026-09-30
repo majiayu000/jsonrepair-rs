@@ -602,6 +602,86 @@ fn url_with_missing_end_quote() {
 }
 
 #[test]
+fn truncated_url_after_text_preserves_path() {
+    for (input, expected) in [
+        (
+            r#""see https://example.com/foo/"#,
+            r#""see https://example.com/foo/""#,
+        ),
+        (
+            r#"{"content":"see https://example.com/foo/"#,
+            r#"{"content":"see https://example.com/foo/"}"#,
+        ),
+        (
+            r#"{"content":"see https://example.com/foo}"#,
+            r#"{"content":"see https://example.com/foo"}"#,
+        ),
+        (
+            r#"["see https://example.com/foo/,1]"#,
+            r#"["see https://example.com/foo/",1]"#,
+        ),
+        (
+            r#"{"content":"see https://example.com/a%20b/}"#,
+            r#"{"content":"see https://example.com/a%20b/"}"#,
+        ),
+    ] {
+        ok(input, expected);
+    }
+    for scheme in ["http", "https", "ftp", "mailto", "file", "data", "irc"] {
+        ok(
+            &format!("\"see {scheme}://example.com/foo/"),
+            &format!("\"see {scheme}://example.com/foo/\""),
+        );
+    }
+}
+
+#[test]
+fn truncated_url_after_real_newline_preserves_content() {
+    ok(
+        r##"{"content":"# Heading\nhttps://example.com/foo}"##,
+        r##"{"content":"# Heading\nhttps://example.com/foo"}"##,
+    );
+    for prefix in ["# Heading\n", "# Heading\n  ", "# Heading\r\n"] {
+        let content = format!("{prefix}https://example.com/foo");
+        let quoted = serde_json::to_string(&content).unwrap();
+        ok(
+            &format!("{{\"content\":\"{content}}}"),
+            &format!("{{\"content\":{quoted}}}"),
+        );
+        let content = format!("{prefix}https:/");
+        let quoted = serde_json::to_string(&content).unwrap();
+        ok(
+            &format!("{{\"content\":\"{content}"),
+            &format!("{{\"content\":{quoted}}}"),
+        );
+    }
+}
+
+#[test]
+fn unquoted_percent_encoded_url_remains_one_value() {
+    for (input, expected) in [
+        (
+            "[https://example.com/a%20b,1]",
+            r#"["https://example.com/a%20b",1]"#,
+        ),
+        (
+            "[https://example.com/a%20b]",
+            r#"["https://example.com/a%20b"]"#,
+        ),
+        (
+            "{url:https://example.com/a%20b/}",
+            r#"{"url":"https://example.com/a%20b/"}"#,
+        ),
+        (
+            r#"{"a":"see https://example.com/a%20b/c"}"#,
+            r#"{"a":"see https://example.com/a%20b/c"}"#,
+        ),
+    ] {
+        ok(input, expected);
+    }
+}
+
+#[test]
 fn missing_start_quote() {
     ok(r#"abc""#, r#""abc""#);
     ok(r#"[a","b"]"#, r#"["a","b"]"#);

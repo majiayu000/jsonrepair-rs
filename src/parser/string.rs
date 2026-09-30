@@ -115,13 +115,37 @@ impl JsonRepairer {
                 self.output.push_str("\\\"");
                 self.pos = quote_pos + 1;
             } else if stop_at_delimiter && chars::is_unquoted_string_delimiter(c) {
-                // URL like "https://..." should not stop at '/'.
+                // Keep a URL on the next line inside the truncated string.
+                if c == '\n' {
+                    let mut next_start = self.pos + 1;
+                    while self
+                        .peek_at(next_start)
+                        .is_some_and(|ch| matches!(ch, ' ' | '\t' | '\r'))
+                    {
+                        next_start += 1;
+                    }
+                    let mut slash_idx = next_start;
+                    while self
+                        .peek_at(slash_idx)
+                        .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == ':')
+                    {
+                        slash_idx += 1;
+                    }
+                    if self.looks_like_url_start(next_start, slash_idx)
+                        || (self.peek_at(slash_idx) == Some('/')
+                            && slash_idx + 1 == self.chars.len()
+                            && self.ends_with_url_scheme(next_start, slash_idx))
+                    {
+                        self.parse_string_char(c)?;
+                        continue;
+                    }
+                }
+
+                // URL schemes can follow prose as well as start the string.
                 if c == '/'
                     && self.pos > input_start + 1
                     && self.peek_at(self.pos - 1) == Some(':')
-                    && (self.looks_like_url_start(input_start + 1, self.pos)
-                        || (self.pos + 1 == self.chars.len()
-                            && self.ends_with_url_scheme(input_start + 1, self.pos)))
+                    && self.ends_with_url_scheme(input_start + 1, self.pos)
                 {
                     while self.peek().is_some_and(chars::is_url_char) {
                         self.output.push(self.chars[self.pos]);
