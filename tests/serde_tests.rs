@@ -174,6 +174,33 @@ fn schema_number_preserves_other_inexact_decimal_strings() {
 }
 
 #[test]
+fn schema_number_corrects_retained_decimals() {
+    let retained: serde_json::Number = "18446744073709551617".parse().unwrap();
+    if retained.as_u128() != Some(18446744073709551617) {
+        return;
+    }
+
+    for text in [
+        "18446744073709551617",
+        "999999999999999999999999999999",
+        "-9223372036854775809",
+        "18446744073709551617.0",
+        "1.8446744073709551617e19",
+        "1.8446744073709552e19",
+        "0.10000000000000001",
+        "1e-400",
+        "1e400",
+    ] {
+        assert_eq!(
+            jsonrepair_value_with_schema(&json!(text).to_string(), &json!({ "type": "number" }))
+                .unwrap(),
+            serde_json::from_str::<serde_json::Value>(text).unwrap(),
+            "must convert retained decimal {text}"
+        );
+    }
+}
+
+#[test]
 fn schema_number_corrects_exact_and_ordinary_decimal_strings() {
     for (text, expected) in [
         ("18446744073709551615", json!(u64::MAX)),
