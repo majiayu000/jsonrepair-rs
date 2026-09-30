@@ -366,8 +366,8 @@ fn numeric_string_round_trips(text: &str, number: &serde_json::Number) -> bool {
 #[cfg(feature = "serde")]
 fn normalized_decimal(text: &str) -> Option<(String, i64)> {
     let (mantissa, exponent) = match text.split_once(['e', 'E']) {
-        Some((mantissa, exponent)) => (mantissa, exponent.parse::<i64>().ok()?),
-        None => (text, 0),
+        Some((mantissa, exponent)) => (mantissa, exponent),
+        None => (text, "0"),
     };
     let fraction_len = mantissa
         .split_once('.')
@@ -380,10 +380,13 @@ fn normalized_decimal(text: &str) -> Option<(String, i64)> {
         .collect();
     let significant = digits.trim_start_matches('0').trim_end_matches('0');
     if significant.is_empty() {
+        // A zero mantissa is exact regardless of the exponent's magnitude.
         return Some(("0".to_owned(), 0));
     }
     let trailing_zeros = digits.len() - digits.trim_end_matches('0').len();
     let exponent = exponent
+        .parse::<i64>()
+        .ok()?
         .checked_sub(i64::try_from(fraction_len).ok()?)?
         .checked_add(i64::try_from(trailing_zeros).ok()?)?;
     let signed_digits = if negative {

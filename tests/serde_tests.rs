@@ -163,6 +163,11 @@ fn schema_number_preserves_other_inexact_decimal_strings() {
         "1.8446744073709552e19",
         "0.10000000000000001",
         "1e-400",
+        "1e400",
+        "1e9223372036854775808",
+        "-1E+999999999999999999999999999999",
+        "1e-9223372036854775809",
+        "-1e-999999999999999999999999999999",
     ] {
         let input = json!(text).to_string();
         assert_eq!(
@@ -229,6 +234,27 @@ fn schema_number_corrects_exact_and_ordinary_decimal_strings() {
             jsonrepair_value_with_schema(&input, &json!({ "type": "number" })).unwrap(),
             expected,
             "must convert {text}"
+        );
+    }
+}
+
+#[test]
+fn schema_number_corrects_zero_with_unbounded_exponents() {
+    for text in [
+        "0e9223372036854775808",
+        "-0e9223372036854775808",
+        "0E+9223372036854775808",
+        "-0.000E+999999999999999999999999999999",
+        "0.000e-9223372036854775809",
+        "-0e-999999999999999999999999999999",
+    ] {
+        let expected: serde_json::Number = text.parse().unwrap();
+        assert_eq!(expected.as_f64(), Some(0.0), "must parse zero {text}");
+        assert_eq!(
+            jsonrepair_value_with_schema(&json!(text).to_string(), &json!({ "type": "number" }))
+                .unwrap(),
+            serde_json::Value::Number(expected),
+            "must convert exact zero {text}"
         );
     }
 }
