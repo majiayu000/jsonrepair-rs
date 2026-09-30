@@ -345,15 +345,17 @@ fn correct_value_with_schema(value: &mut serde_json::Value, schema: &serde_json:
 fn numeric_string_round_trips(text: &str, number: &serde_json::Number) -> bool {
     // Only arbitrary_precision can store u128::MAX. In that mode, compare the
     // retained decimal directly, since as_f64() may round an exact Number.
-    let rendered = if serde_json::Number::from_u128(u128::MAX).is_some() {
-        number.to_string()
-    } else {
-        // The shortest float representation can hide rounding of large integers.
-        // Render integral floats in full; ordinary fractions use JSON's decimal form.
-        match number.as_f64() {
-            Some(value) if value.fract() == 0.0 => format!("{value:.0}"),
-            _ => number.to_string(),
-        }
+    if serde_json::Number::from_u128(u128::MAX).is_some() {
+        // Parsing can lowercase E and insert an exponent's optional + sign.
+        // Compare those spellings without imposing a bound on the exponent.
+        let decimal_spelling = |text: &str| text.replace('E', "e").replace("e+", "e");
+        return decimal_spelling(text) == decimal_spelling(&number.to_string());
+    }
+    // The shortest float representation can hide rounding of large integers.
+    // Render integral floats in full; ordinary fractions use JSON's decimal form.
+    let rendered = match number.as_f64() {
+        Some(value) if value.fract() == 0.0 => format!("{value:.0}"),
+        _ => number.to_string(),
     };
     match (normalized_decimal(text), normalized_decimal(&rendered)) {
         (Some(original), Some(converted)) => original == converted,
