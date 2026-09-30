@@ -109,6 +109,21 @@ fn preserves_url_content_across_reader_chunks() {
 }
 
 #[test]
+fn preserves_url_with_following_prose_across_reader_chunks() {
+    let input = r#"{"content":"see https://example.com/foo and more}"#;
+    let expected = r#"{"content":"see https://example.com/foo and more"}"#;
+    for chunk_size in 1..=5 {
+        let mut output = Vec::new();
+        jsonrepair_reader_to_writer(
+            ChunkedReader::new(input.as_bytes(), chunk_size),
+            &mut output,
+        )
+        .unwrap();
+        assert_eq!(output, expected.as_bytes(), "chunk size {chunk_size}");
+    }
+}
+
+#[test]
 fn preserves_repair_errors_without_partial_output() {
     for input in [&br#""\u00""#[..], &b"[\x0c"[..], &br#""\udfff""#[..]] {
         let mut output = Vec::new();

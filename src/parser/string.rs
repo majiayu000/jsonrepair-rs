@@ -151,6 +151,12 @@ impl JsonRepairer {
                         self.output.push(self.chars[self.pos]);
                         self.pos += 1;
                     }
+                    if self
+                        .peek()
+                        .is_some_and(|ch| !chars::is_unquoted_string_delimiter(ch))
+                    {
+                        continue;
+                    }
                 }
 
                 self.insert_before_last_output_whitespace(output_start + 1, "\"");

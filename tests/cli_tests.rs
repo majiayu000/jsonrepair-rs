@@ -48,6 +48,31 @@ fn repairs_stdin_to_stdout() {
 }
 
 #[test]
+fn repairs_url_with_following_prose() {
+    let mut child = Command::new(bin())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(br#"{"content":"see https://example.com/foo and more}"#)
+        .unwrap();
+
+    let output = child.wait_with_output().unwrap();
+
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        output.stdout,
+        br#"{"content":"see https://example.com/foo and more"}"#
+    );
+    assert!(output.stderr.is_empty(), "{output:?}");
+}
+
+#[test]
 fn repairs_file_to_output_file() {
     let input_path = temp_path("input");
     let output_path = temp_path("output");
