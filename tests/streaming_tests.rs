@@ -658,3 +658,130 @@ fn known_wrappers_quoted_literal_parentheses() {
         }
     }
 }
+
+#[test]
+fn known_wrappers_repaired_quote_and_hash_lookahead() {
+    for (input, expected) in [
+        (
+            r###"{x:callback(1,"foo,a:b)}"###,
+            r###"{"x":[1,"foo","a:b"]}"###,
+        ),
+        (r###"callback(1,"foo,a:b)"###, r###"[1,"foo","a:b"]"###),
+        (
+            r###"{x:callback(1,"foo,a=b)}"###,
+            r###"{"x":[1,"foo","a=b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,"foo,a:b),y:2}"###,
+            r###"{"x":[1,"foo","a:b"],"y":2}"###,
+        ),
+        (
+            r###"{x:callback(1,"foo,a:b")}"###,
+            r###"{"x":[1,"foo,a:b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,"foo\"bar,a:b)}"###,
+            r###"{"x":[1,"foo\"bar","a:b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,"foo)bar,a:b)}"###,
+            r###"{"x":[1,"foo)bar","a:b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,foo#bar,a:b)}"###,
+            r###"{"x":[1,"foo#bar","a:b"]}"###,
+        ),
+        (
+            r###"callback(1,foo#bar,a:b)"###,
+            r###"[1,"foo#bar","a:b"]"###,
+        ),
+        (
+            r###"{x:callback(1,foo #bar,a:b)}"###,
+            r###"{"x":[1,"foo #bar","a:b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,foo#bar,a=b)}"###,
+            r###"{"x":[1,"foo#bar","a=b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,foo#bar,a:b),y:2}"###,
+            r###"{"x":[1,"foo#bar","a:b"],"y":2}"###,
+        ),
+        (
+            "{x:callback(1,#comment\nfoo,a:b)}",
+            "{\"x\":[1,\n\"foo\",\"a:b\"]}",
+        ),
+        (
+            "{x:callback(1,true #comment\n,a:b)}",
+            "{\"x\":[1,true \n,\"a:b\"]}",
+        ),
+        (
+            "{x:callback(1,2 #comment\n,a:b)}",
+            "{\"x\":[1,2 \n,\"a:b\"]}",
+        ),
+        (
+            r###"{x:callback(1,foo#bar,y:2}"###,
+            r###"{"x":[1,"foo#bar"],"y":2}"###,
+        ),
+        (
+            r###"{x:callback(1,"foo#bar",a:b)}"###,
+            r###"{"x":[1,"foo#bar","a:b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,/#}/,a:b)}"###,
+            r###"{"x":[1,"/#}/","a:b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,https://example.com/#bar,a:b)}"###,
+            r###"{"x":[1,"https://example.com/#bar","a:b"]}"###,
+        ),
+    ] {
+        for chunk_size in 1..=5 {
+            let mut output = Vec::new();
+            jsonrepair_reader_to_writer(
+                ChunkedReader::new(input.as_bytes(), chunk_size),
+                &mut output,
+            )
+            .unwrap();
+            assert_eq!(
+                output,
+                expected.as_bytes(),
+                "input {input:?}, chunk {chunk_size}"
+            );
+            serde_json::from_slice::<serde_json::Value>(&output).unwrap();
+        }
+    }
+}
+
+#[test]
+fn known_wrappers_depth_errors_write_no_partial_output() {
+    std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| {
+            let limit = jsonrepair(&"[".repeat(513)).unwrap_err().position;
+            for wrapper in ["callback(0,", "ObjectId("] {
+                let input = format!("{}0{}", wrapper.repeat(limit + 1), ")".repeat(limit + 1));
+                let expected = jsonrepair(&input).unwrap_err();
+                assert_eq!(
+                    expected.kind,
+                    jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+                );
+                for chunk_size in 1..=5 {
+                    let mut output = Vec::new();
+                    let error = jsonrepair_reader_to_writer(
+                        ChunkedReader::new(input.as_bytes(), chunk_size),
+                        &mut output,
+                    )
+                    .unwrap_err();
+                    match error {
+                        JsonRepairStreamError::Repair(error) => assert_eq!(error, expected),
+                        other => panic!("unexpected stream error: {other:?}"),
+                    }
+                    assert!(output.is_empty());
+                }
+            }
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}

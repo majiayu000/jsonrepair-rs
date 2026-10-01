@@ -534,6 +534,7 @@ impl JsonRepairer {
             return Ok(false);
         }
 
+        self.enter_container()?;
         self.pos = cursor + 1;
         let output_start = self.output.len();
         self.parse_whitespace_and_comments();
@@ -550,7 +551,7 @@ impl JsonRepairer {
 
         if self.peek() == Some(',') {
             // Property recovery applies only when the wrapper close is missing.
-            let closed_wrapper = self.in_object && self.wrapper_has_closing_parenthesis(cursor);
+            let closed_wrapper = self.in_object && self.wrapper_has_closing_parenthesis(cursor)?;
             let mut multiple_arguments = false;
             while self.peek() == Some(',')
                 && (closed_wrapper || !self.comma_starts_object_property()?)
@@ -607,10 +608,11 @@ impl JsonRepairer {
             }
         }
 
+        self.leave_container();
         Ok(true)
     }
 
-    fn wrapper_has_closing_parenthesis(&self, start: usize) -> bool {
+    fn wrapper_has_closing_parenthesis(&mut self, start: usize) -> Result<bool> {
         let mut cursor = start + 1;
         let mut parentheses = 1usize;
         let mut containers = 0usize;
@@ -625,19 +627,43 @@ impl JsonRepairer {
             {
                 in_url = true;
             }
-            if !in_url && chars::is_quote(c) {
-                cursor += 1;
-                while let Some(quoted) = self.peek_at(cursor) {
-                    cursor += 1;
-                    if quoted == '\\' {
-                        cursor += 1;
-                    } else if quoted == c
-                        || (chars::is_double_quote_like(c) && chars::is_double_quote_like(quoted))
-                        || (chars::is_single_quote_like(c) && chars::is_single_quote_like(quoted))
+            if !in_url && (chars::is_quote(c) || chars::is_identifier_start(c)) {
+                if chars::is_identifier_start(c) {
+                    let mut name_end = cursor;
+                    while self
+                        .peek_at(name_end)
+                        .is_some_and(chars::is_identifier_char)
                     {
-                        break;
+                        name_end += 1;
+                    }
+                    let mut after_name = name_end;
+                    while self.peek_at(after_name).is_some_and(chars::is_whitespace) {
+                        after_name += 1;
+                    }
+                    // Leave actual wrapper parentheses to the structural scan.
+                    if self.slice_eq_ignore_ascii_case(cursor, name_end, "new")
+                        || (self.peek_at(after_name) == Some('(')
+                            && self.is_known_wrapper_function(cursor, name_end))
+                    {
+                        cursor = name_end;
+                        continue;
                     }
                 }
+                let input_start = self.pos;
+                let output_start = self.output.len();
+                let depth_start = self.depth;
+                self.pos = cursor;
+                // Reuse repair boundaries, including missing quotes and embedded '#'.
+                let parsed = if chars::is_quote(c) {
+                    self.parse_string(containers == 0)
+                } else {
+                    self.parse_keyword_or_unquoted(containers == 0)
+                };
+                cursor = self.pos;
+                self.pos = input_start;
+                self.output.truncate(output_start);
+                self.depth = depth_start;
+                parsed?;
                 continue;
             }
             if !in_url && c == '/' && self.peek_at(cursor + 1) == Some('*') {
@@ -683,20 +709,20 @@ impl JsonRepairer {
             }
             match c {
                 '{' | '[' => containers += 1,
-                '}' | ']' if containers == 0 => return false,
+                '}' | ']' if containers == 0 => return Ok(false),
                 '}' | ']' => containers -= 1,
                 '(' if containers == 0 => parentheses += 1,
                 ')' if containers == 0 => {
                     parentheses -= 1;
                     if parentheses == 0 {
-                        return true;
+                        return Ok(true);
                     }
                 }
                 _ => {}
             }
             cursor += 1;
         }
-        false
+        Ok(false)
     }
 
     fn comma_starts_object_property(&mut self) -> Result<bool> {

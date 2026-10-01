@@ -750,3 +750,99 @@ fn known_wrappers_quoted_literal_parentheses() {
         serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap();
     }
 }
+
+#[test]
+fn known_wrappers_repaired_quote_and_hash_lookahead() {
+    for (input, expected) in [
+        (
+            r###"{x:callback(1,"foo,a:b)}"###,
+            r###"{"x":[1,"foo","a:b"]}"###,
+        ),
+        (r###"callback(1,"foo,a:b)"###, r###"[1,"foo","a:b"]"###),
+        (
+            r###"{x:callback(1,"foo,a=b)}"###,
+            r###"{"x":[1,"foo","a=b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,"foo,a:b),y:2}"###,
+            r###"{"x":[1,"foo","a:b"],"y":2}"###,
+        ),
+        (
+            r###"{x:callback(1,"foo,a:b")}"###,
+            r###"{"x":[1,"foo,a:b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,"foo\"bar,a:b)}"###,
+            r###"{"x":[1,"foo\"bar","a:b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,"foo)bar,a:b)}"###,
+            r###"{"x":[1,"foo)bar","a:b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,foo#bar,a:b)}"###,
+            r###"{"x":[1,"foo#bar","a:b"]}"###,
+        ),
+        (
+            r###"callback(1,foo#bar,a:b)"###,
+            r###"[1,"foo#bar","a:b"]"###,
+        ),
+        (
+            r###"{x:callback(1,foo #bar,a:b)}"###,
+            r###"{"x":[1,"foo #bar","a:b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,foo#bar,a=b)}"###,
+            r###"{"x":[1,"foo#bar","a=b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,foo#bar,a:b),y:2}"###,
+            r###"{"x":[1,"foo#bar","a:b"],"y":2}"###,
+        ),
+        (
+            "{x:callback(1,#comment\nfoo,a:b)}",
+            "{\"x\":[1,\n\"foo\",\"a:b\"]}",
+        ),
+        (
+            "{x:callback(1,true #comment\n,a:b)}",
+            "{\"x\":[1,true \n,\"a:b\"]}",
+        ),
+        (
+            "{x:callback(1,2 #comment\n,a:b)}",
+            "{\"x\":[1,2 \n,\"a:b\"]}",
+        ),
+        (
+            r###"{x:callback(1,foo#bar,y:2}"###,
+            r###"{"x":[1,"foo#bar"],"y":2}"###,
+        ),
+        (
+            r###"{x:callback(1,"foo#bar",a:b)}"###,
+            r###"{"x":[1,"foo#bar","a:b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,/#}/,a:b)}"###,
+            r###"{"x":[1,"/#}/","a:b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,https://example.com/#bar,a:b)}"###,
+            r###"{"x":[1,"https://example.com/#bar","a:b"]}"###,
+        ),
+    ] {
+        let mut child = Command::new(bin())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success(), "input {input:?}: {output:?}");
+        assert_eq!(output.stdout, expected.as_bytes(), "input {input:?}");
+        assert!(output.stderr.is_empty(), "input {input:?}: {output:?}");
+    }
+}
