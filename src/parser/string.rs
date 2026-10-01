@@ -519,15 +519,15 @@ impl JsonRepairer {
         };
 
         if self.peek() == Some(',') {
-            if !value_parsed {
-                return Err(self.error_char_kind(
-                    "Unexpected character",
-                    JsonRepairErrorKind::UnexpectedCharacter,
-                ));
-            }
             // A key followed by a colon belongs to the enclosing object.
             let mut multiple_arguments = false;
             while self.peek() == Some(',') && !self.comma_starts_object_property()? {
+                if !value_parsed {
+                    return Err(self.error_char_kind(
+                        "Unexpected character",
+                        JsonRepairErrorKind::UnexpectedCharacter,
+                    ));
+                }
                 if !multiple_arguments {
                     self.output.insert(output_start, '[');
                     multiple_arguments = true;
@@ -548,13 +548,22 @@ impl JsonRepairer {
                 }
             }
             if multiple_arguments {
-                if !matches!(self.peek(), Some(',' | ')' | '}' | ']')) && !self.at_end() {
+                let ndjson_boundary = self.peek().is_some_and(chars::is_start_of_value)
+                    && self.output_ends_with_comma_or_newline();
+                if !matches!(self.peek(), Some(',' | ')' | '}' | ']'))
+                    && !self.at_end()
+                    && !ndjson_boundary
+                {
                     return Err(self.error_char_kind(
                         "Unexpected character",
                         JsonRepairErrorKind::UnexpectedCharacter,
                     ));
                 }
-                self.output.push(']');
+                if ndjson_boundary {
+                    self.insert_before_last_whitespace("]");
+                } else {
+                    self.output.push(']');
+                }
             }
         }
 
