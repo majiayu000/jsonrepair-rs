@@ -51,10 +51,10 @@ impl JsonRepairer {
         }
 
         if c == Some('{') {
-            finish!(self.parse_object()?);
+            finish!(self.parse_object(is_wrapper_argument)?);
         }
         if c == Some('[') {
-            finish!(self.parse_array()?);
+            finish!(self.parse_array(is_wrapper_argument)?);
         }
         if c == Some('`') && self.matches_at(self.pos, "```") {
             finish!(self.parse_markdown_fenced()?);
@@ -62,7 +62,7 @@ impl JsonRepairer {
         if c.is_some_and(chars::is_quote)
             || (c == Some('\\') && self.peek_at(self.pos + 1).is_some_and(chars::is_quote))
         {
-            finish!(self.parse_string()?);
+            finish!(self.parse_string(is_wrapper_argument)?);
         }
         if c == Some('+') && self.parse_plus_number()? {
             finish!(true);

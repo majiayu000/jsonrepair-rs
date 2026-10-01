@@ -6,14 +6,15 @@ use super::Result;
 
 impl JsonRepairer {
     /// Parse a quoted string value.
-    pub(super) fn parse_string(&mut self) -> Result<bool> {
-        self.parse_string_internal(false, None)
+    pub(super) fn parse_string(&mut self, is_wrapper_argument: bool) -> Result<bool> {
+        self.parse_string_internal(false, None, is_wrapper_argument)
     }
 
     fn parse_string_internal(
         &mut self,
         stop_at_delimiter: bool,
         stop_at_index: Option<usize>,
+        is_wrapper_argument: bool,
     ) -> Result<bool> {
         let skip_escape_chars = self.peek() == Some('\\');
         if skip_escape_chars {
@@ -39,6 +40,7 @@ impl JsonRepairer {
         let output_start = self.output.len();
         self.output.push('"');
         self.pos += 1;
+        let mut parenthesis_depth = 0usize;
 
         loop {
             if self.at_end() {
@@ -52,7 +54,7 @@ impl JsonRepairer {
                     // Retry in conservative mode when we ended after a delimiter.
                     self.pos = input_start;
                     self.output.truncate(output_start);
-                    return self.parse_string_internal(true, None);
+                    return self.parse_string_internal(true, None, is_wrapper_argument);
                 }
 
                 self.insert_before_last_output_whitespace(output_start + 1, "\"");
@@ -87,7 +89,7 @@ impl JsonRepairer {
                         chars::is_delimiter(ch) || chars::is_quote(ch) || chars::is_digit(ch)
                     })
                 {
-                    self.parse_concatenated_string()?;
+                    self.parse_concatenated_string(is_wrapper_argument)?;
                     return Ok(true);
                 }
 
@@ -100,21 +102,24 @@ impl JsonRepairer {
                     // {"a":"b,c,"d":"e"} -> stop at comma before quote.
                     self.pos = input_start;
                     self.output.truncate(output_start);
-                    return self.parse_string_internal(false, prev_non_ws);
+                    return self.parse_string_internal(false, prev_non_ws, is_wrapper_argument);
                 }
 
                 if prev_char.is_some_and(chars::is_delimiter) {
                     // End quote likely missing earlier.
                     self.pos = input_start;
                     self.output.truncate(output_start);
-                    return self.parse_string_internal(true, None);
+                    return self.parse_string_internal(true, None, is_wrapper_argument);
                 }
 
                 // Not a real closing quote: continue, escaping this quote.
                 self.output.truncate(quote_output_pos);
                 self.output.push_str("\\\"");
                 self.pos = quote_pos + 1;
-            } else if stop_at_delimiter && chars::is_unquoted_string_delimiter(c) {
+            } else if stop_at_delimiter
+                && (chars::is_unquoted_string_delimiter(c)
+                    || (is_wrapper_argument && c == ')' && parenthesis_depth == 0))
+            {
                 // URL like "https://..." should not stop at '/'.
                 if c == '/'
                     && self.pos > input_start + 1
@@ -124,17 +129,31 @@ impl JsonRepairer {
                             && self.ends_with_url_scheme(input_start + 1, self.pos)))
                 {
                     while self.peek().is_some_and(chars::is_url_char) {
+                        let url_char = self.chars[self.pos];
+                        if is_wrapper_argument && url_char == ')' && parenthesis_depth == 0 {
+                            break;
+                        }
+                        if url_char == '(' {
+                            parenthesis_depth += 1;
+                        } else if url_char == ')' {
+                            parenthesis_depth = parenthesis_depth.saturating_sub(1);
+                        }
                         self.output.push(self.chars[self.pos]);
                         self.pos += 1;
                     }
                 }
 
                 self.insert_before_last_output_whitespace(output_start + 1, "\"");
-                self.parse_concatenated_string()?;
+                self.parse_concatenated_string(is_wrapper_argument)?;
                 return Ok(true);
             } else if c == '\\' {
                 self.parse_string_escape()?;
             } else {
+                if c == '(' {
+                    parenthesis_depth += 1;
+                } else if c == ')' {
+                    parenthesis_depth = parenthesis_depth.saturating_sub(1);
+                }
                 self.parse_string_char(c)?;
             }
 
@@ -296,7 +315,7 @@ impl JsonRepairer {
         Ok(())
     }
 
-    fn parse_concatenated_string(&mut self) -> Result<bool> {
+    fn parse_concatenated_string(&mut self, is_wrapper_argument: bool) -> Result<bool> {
         let mut processed = false;
 
         self.parse_whitespace_and_comments();
@@ -310,7 +329,7 @@ impl JsonRepairer {
                 self.output.truncate(idx);
             }
             let second_start = self.output.len();
-            if self.parse_string()? {
+            if self.parse_string(is_wrapper_argument)? {
                 // Remove start quote from second string.
                 if second_start < self.output.len() {
                     self.output.remove(second_start);
@@ -519,9 +538,12 @@ impl JsonRepairer {
         };
 
         if self.peek() == Some(',') {
-            // A key followed by a colon belongs to the enclosing object.
+            // Property recovery applies only when the wrapper close is missing.
+            let closed_wrapper = self.in_object && self.wrapper_has_closing_parenthesis(cursor);
             let mut multiple_arguments = false;
-            while self.peek() == Some(',') && !self.comma_starts_object_property()? {
+            while self.peek() == Some(',')
+                && (closed_wrapper || !self.comma_starts_object_property()?)
+            {
                 if !value_parsed {
                     return Err(self.error_char_kind(
                         "Unexpected character",
@@ -577,6 +599,68 @@ impl JsonRepairer {
         Ok(true)
     }
 
+    fn wrapper_has_closing_parenthesis(&self, start: usize) -> bool {
+        let mut cursor = start + 1;
+        let mut parentheses = 1usize;
+        let mut containers = 0usize;
+        let mut in_url = false;
+        while let Some(c) = self.peek_at(cursor) {
+            if in_url && !chars::is_url_char(c) {
+                in_url = false;
+            }
+            if c == '/'
+                && self.peek_at(cursor.saturating_sub(1)) == Some(':')
+                && self.ends_with_url_scheme(start + 1, cursor)
+            {
+                in_url = true;
+            }
+            if !in_url && chars::is_quote(c) {
+                cursor += 1;
+                while let Some(quoted) = self.peek_at(cursor) {
+                    cursor += 1;
+                    if quoted == '\\' {
+                        cursor += 1;
+                    } else if quoted == c
+                        || (chars::is_double_quote_like(c) && chars::is_double_quote_like(quoted))
+                        || (chars::is_single_quote_like(c) && chars::is_single_quote_like(quoted))
+                    {
+                        break;
+                    }
+                }
+                continue;
+            }
+            if !in_url && c == '/' && self.peek_at(cursor + 1) == Some('*') {
+                cursor += 2;
+                while self.peek_at(cursor).is_some() && !self.matches_at(cursor, "*/") {
+                    cursor += 1;
+                }
+                cursor += 2;
+                continue;
+            }
+            if !in_url && ((c == '/' && self.peek_at(cursor + 1) == Some('/')) || c == '#') {
+                while self.peek_at(cursor).is_some_and(|ch| ch != '\n') {
+                    cursor += 1;
+                }
+                continue;
+            }
+            match c {
+                '{' | '[' => containers += 1,
+                '}' | ']' if containers == 0 => return false,
+                '}' | ']' => containers -= 1,
+                '(' if containers == 0 => parentheses += 1,
+                ')' if containers == 0 => {
+                    parentheses -= 1;
+                    if parentheses == 0 {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+            cursor += 1;
+        }
+        false
+    }
+
     fn comma_starts_object_property(&mut self) -> Result<bool> {
         if !self.in_object {
             return Ok(false);
@@ -588,7 +672,7 @@ impl JsonRepairer {
         let key_start = self.pos;
         // Reuse the key parsers without consuming input or output, including on errors.
         let property = self
-            .parse_string()
+            .parse_string(false)
             .and_then(|parsed| {
                 if parsed {
                     Ok(true)

@@ -421,3 +421,111 @@ fn output_equals_writes_file() -> Result<(), Box<dyn std::error::Error>> {
     let _ = fs::remove_file(output_path);
     Ok(())
 }
+
+#[test]
+fn known_wrappers_closed_colon_arguments() {
+    for (input, expected) in [
+        (
+            "{\"x\":callback(1,https://example.com/a//b,a:b)}",
+            "{\"x\":[1,\"https://example.com/a//b\",\"a:b\"]}",
+        ),
+        (
+            "{\"x\":callback(1,https://example.com/path_(a)#frag,a:b)}",
+            "{\"x\":[1,\"https://example.com/path_(a)#frag\",\"a:b\"]}",
+        ),
+        ("{\"x\":callback(1,a:b)}", "{\"x\":[1,\"a:b\"]}"),
+        ("callback(1,a:b)", "[1,\"a:b\"]"),
+        ("[callback(1,a:b)]", "[[1,\"a:b\"]]"),
+        ("{\"x\":callback(1,a:b,2)}", "{\"x\":[1,\"a:b\",2]}"),
+        (
+            "{\"x\":callback(1,a:b(foo),2)}",
+            "{\"x\":[1,\"a:b(foo)\",2]}",
+        ),
+        (
+            "{\"x\":callback(1,callback(2,a:b))}",
+            "{\"x\":[1,[2,\"a:b\"]]}",
+        ),
+        (
+            "{\"x\":callback(1,a:b),\"y\":2}",
+            "{\"x\":[1,\"a:b\"],\"y\":2}",
+        ),
+        (
+            "{\"x\":callback(1,\"y\":\"a)b\"}",
+            "{\"x\":1,\"y\":\"a)b\"}",
+        ),
+        (
+            "{\"x\":callback(1,y:foo(bar)}",
+            "{\"x\":1,\"y\":\"foo(bar)\"}",
+        ),
+    ] {
+        let mut child = Command::new(bin())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success(), "input {input:?}: {output:?}");
+        assert_eq!(output.stdout, expected.as_bytes(), "input {input:?}");
+        assert!(output.stderr.is_empty(), "input {input:?}: {output:?}");
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap();
+    }
+}
+
+#[test]
+fn known_wrappers_direct_argument_boundaries() {
+    for (input, expected) in [
+        (
+            "callback(1,\"https://example.com/path_(a))",
+            "[1,\"https://example.com/path_(a)\"]",
+        ),
+        ("callback(1,\"foo(bar))", "[1,\"foo(bar)\"]"),
+        ("callback(1,\"foo)", "[1,\"foo\"]"),
+        ("callback(1,{\"a\":2)", "[1,{\"a\":2}]"),
+        ("callback(1,[2)", "[1,[2]]"),
+        ("callback(1,{\"a\":2,)", "[1,{\"a\":2}]"),
+        ("callback(1,[2,)", "[1,[2]]"),
+        ("{\"x\":callback(1,\"foo)}", "{\"x\":[1,\"foo\"]}"),
+        ("[callback(1,{\"a\":2)]", "[[1,{\"a\":2}]]"),
+        ("callback(1,\"foo)\")", "[1,\"foo)\"]"),
+        ("callback(1,\"foo)bar\")", "[1,\"foo)bar\"]"),
+        ("callback(1,\"foo(bar)\")", "[1,\"foo(bar)\"]"),
+        (
+            "callback(1,\"foo(\\\"bar\\\")\")",
+            "[1,\"foo(\\\"bar\\\")\"]",
+        ),
+        ("callback(1,{\"a\":\"foo)\"})", "[1,{\"a\":\"foo)\"}]"),
+        ("callback(1,[\"foo)\"])", "[1,[\"foo)\"]]"),
+        ("callback(1,{a:foo)})", "[1,{\"a\":\"foo)\"}]"),
+        ("callback(1,[foo)])", "[1,[\"foo)\"]]"),
+        ("callback(1,{a:[\"foo)\"]})", "[1,{\"a\":[\"foo)\"]}]"),
+        (
+            "callback(1,\"https://example.com/path_(a)\")",
+            "[1,\"https://example.com/path_(a)\"]",
+        ),
+    ] {
+        let mut child = Command::new(bin())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success(), "input {input:?}: {output:?}");
+        assert_eq!(output.stdout, expected.as_bytes(), "input {input:?}");
+        assert!(output.stderr.is_empty(), "input {input:?}: {output:?}");
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap();
+    }
+}

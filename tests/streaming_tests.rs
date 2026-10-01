@@ -347,3 +347,105 @@ impl Write for FailingWriter {
         Ok(())
     }
 }
+
+#[test]
+fn known_wrappers_closed_colon_arguments() {
+    for (input, expected) in [
+        (
+            "{\"x\":callback(1,https://example.com/a//b,a:b)}",
+            "{\"x\":[1,\"https://example.com/a//b\",\"a:b\"]}",
+        ),
+        (
+            "{\"x\":callback(1,https://example.com/path_(a)#frag,a:b)}",
+            "{\"x\":[1,\"https://example.com/path_(a)#frag\",\"a:b\"]}",
+        ),
+        ("{\"x\":callback(1,a:b)}", "{\"x\":[1,\"a:b\"]}"),
+        ("callback(1,a:b)", "[1,\"a:b\"]"),
+        ("[callback(1,a:b)]", "[[1,\"a:b\"]]"),
+        ("{\"x\":callback(1,a:b,2)}", "{\"x\":[1,\"a:b\",2]}"),
+        (
+            "{\"x\":callback(1,a:b(foo),2)}",
+            "{\"x\":[1,\"a:b(foo)\",2]}",
+        ),
+        (
+            "{\"x\":callback(1,callback(2,a:b))}",
+            "{\"x\":[1,[2,\"a:b\"]]}",
+        ),
+        (
+            "{\"x\":callback(1,a:b),\"y\":2}",
+            "{\"x\":[1,\"a:b\"],\"y\":2}",
+        ),
+        (
+            "{\"x\":callback(1,\"y\":\"a)b\"}",
+            "{\"x\":1,\"y\":\"a)b\"}",
+        ),
+        (
+            "{\"x\":callback(1,y:foo(bar)}",
+            "{\"x\":1,\"y\":\"foo(bar)\"}",
+        ),
+    ] {
+        for chunk_size in 1..=5 {
+            let mut output = Vec::new();
+            jsonrepair_reader_to_writer(
+                ChunkedReader::new(input.as_bytes(), chunk_size),
+                &mut output,
+            )
+            .unwrap();
+            assert_eq!(
+                output,
+                expected.as_bytes(),
+                "input {input:?}, chunk {chunk_size}"
+            );
+            serde_json::from_slice::<serde_json::Value>(&output).unwrap();
+        }
+    }
+}
+
+#[test]
+fn known_wrappers_direct_argument_boundaries() {
+    for (input, expected) in [
+        (
+            "callback(1,\"https://example.com/path_(a))",
+            "[1,\"https://example.com/path_(a)\"]",
+        ),
+        ("callback(1,\"foo(bar))", "[1,\"foo(bar)\"]"),
+        ("callback(1,\"foo)", "[1,\"foo\"]"),
+        ("callback(1,{\"a\":2)", "[1,{\"a\":2}]"),
+        ("callback(1,[2)", "[1,[2]]"),
+        ("callback(1,{\"a\":2,)", "[1,{\"a\":2}]"),
+        ("callback(1,[2,)", "[1,[2]]"),
+        ("{\"x\":callback(1,\"foo)}", "{\"x\":[1,\"foo\"]}"),
+        ("[callback(1,{\"a\":2)]", "[[1,{\"a\":2}]]"),
+        ("callback(1,\"foo)\")", "[1,\"foo)\"]"),
+        ("callback(1,\"foo)bar\")", "[1,\"foo)bar\"]"),
+        ("callback(1,\"foo(bar)\")", "[1,\"foo(bar)\"]"),
+        (
+            "callback(1,\"foo(\\\"bar\\\")\")",
+            "[1,\"foo(\\\"bar\\\")\"]",
+        ),
+        ("callback(1,{\"a\":\"foo)\"})", "[1,{\"a\":\"foo)\"}]"),
+        ("callback(1,[\"foo)\"])", "[1,[\"foo)\"]]"),
+        ("callback(1,{a:foo)})", "[1,{\"a\":\"foo)\"}]"),
+        ("callback(1,[foo)])", "[1,[\"foo)\"]]"),
+        ("callback(1,{a:[\"foo)\"]})", "[1,{\"a\":[\"foo)\"]}]"),
+        (
+            "callback(1,\"https://example.com/path_(a)\")",
+            "[1,\"https://example.com/path_(a)\"]",
+        ),
+    ] {
+        for chunk_size in 1..=5 {
+            let mut output = Vec::new();
+            jsonrepair_reader_to_writer(
+                ChunkedReader::new(input.as_bytes(), chunk_size),
+                &mut output,
+            )
+            .unwrap();
+            assert_eq!(
+                output,
+                expected.as_bytes(),
+                "input {input:?}, chunk {chunk_size}"
+            );
+            serde_json::from_slice::<serde_json::Value>(&output).unwrap();
+        }
+    }
+}

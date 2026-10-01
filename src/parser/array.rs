@@ -4,7 +4,7 @@ use super::JsonRepairer;
 use super::Result;
 
 impl JsonRepairer {
-    pub(super) fn parse_array(&mut self) -> Result<bool> {
+    pub(super) fn parse_array(&mut self, is_wrapper_argument: bool) -> Result<bool> {
         if self.peek() != Some('[') {
             return Ok(false);
         }
@@ -23,7 +23,10 @@ impl JsonRepairer {
         }
 
         let mut initial = true;
-        while !self.at_end() && self.peek() != Some(']') {
+        while !self.at_end()
+            && self.peek() != Some(']')
+            && !(is_wrapper_argument && self.peek() == Some(')'))
+        {
             if !initial {
                 let processed_comma = self.parse_char(',');
                 if !processed_comma {
@@ -39,6 +42,11 @@ impl JsonRepairer {
                 .is_some_and(|c| c == '.' || c == '/' || c == '#' || chars::is_whitespace(c))
             {
                 self.parse_skip_ellipsis();
+            }
+
+            if is_wrapper_argument && self.peek() == Some(')') {
+                self.strip_trailing_comma(frame_start);
+                break;
             }
 
             let processed_value = self.parse_value(false)?;
