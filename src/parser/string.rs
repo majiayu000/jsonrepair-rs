@@ -512,8 +512,14 @@ impl JsonRepairer {
                     JsonRepairErrorKind::UnexpectedCharacter,
                 ));
             }
-            self.output.insert(output_start, '[');
-            while self.parse_char(',') {
+            // A key followed by a colon belongs to the enclosing object.
+            let mut multiple_arguments = false;
+            while self.peek() == Some(',') && !self.comma_starts_object_property()? {
+                if !multiple_arguments {
+                    self.output.insert(output_start, '[');
+                    multiple_arguments = true;
+                }
+                self.parse_char(',');
                 self.parse_whitespace_and_comments();
                 if self.at_end() {
                     return Err(self.error_kind(
@@ -528,13 +534,15 @@ impl JsonRepairer {
                     ));
                 }
             }
-            if !matches!(self.peek(), Some(')' | '}' | ']')) && !self.at_end() {
-                return Err(self.error_char_kind(
-                    "Unexpected character",
-                    JsonRepairErrorKind::UnexpectedCharacter,
-                ));
+            if multiple_arguments {
+                if !matches!(self.peek(), Some(',' | ')' | '}' | ']')) && !self.at_end() {
+                    return Err(self.error_char_kind(
+                        "Unexpected character",
+                        JsonRepairErrorKind::UnexpectedCharacter,
+                    ));
+                }
+                self.output.push(']');
             }
-            self.output.push(']');
         }
 
         if self.peek() == Some(')') {
@@ -545,6 +553,37 @@ impl JsonRepairer {
         }
 
         Ok(true)
+    }
+
+    fn comma_starts_object_property(&mut self) -> Result<bool> {
+        if !self.in_object {
+            return Ok(false);
+        }
+        let input_start = self.pos;
+        let output_start = self.output.len();
+        self.pos += 1;
+        self.parse_whitespace_and_comments();
+        let key_start = self.pos;
+        // Reuse the key parsers without consuming input or output, including on errors.
+        let property = self
+            .parse_string()
+            .and_then(|parsed| {
+                if parsed {
+                    Ok(true)
+                } else {
+                    self.parse_unquoted_string(true)
+                }
+            })
+            .map(|parsed| {
+                self.parse_whitespace_and_comments();
+                parsed
+                    && self.peek() == Some(':')
+                    && !(self.peek_at(self.pos + 1) == Some('/')
+                        && self.ends_with_url_scheme(key_start, self.pos + 1))
+            });
+        self.pos = input_start;
+        self.output.truncate(output_start);
+        property
     }
 
     fn slice_starts_with(&self, start: usize, end: usize, prefix: &str) -> bool {

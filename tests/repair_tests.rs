@@ -512,6 +512,44 @@ fn known_wrappers_multiple_arguments() {
         (r#"{"x":ObjectId("a","b"}"#, r#"{"x":["a","b"]}"#),
         (r#"{"x":callback(1}"#, r#"{"x":1}"#),
         ("[callback(1]", "[1]"),
+        (r#"{"x":callback(1,"y":2}"#, r#"{"x":1,"y":2}"#),
+        ("{x:callback(1,y:2}", r#"{"x":1,"y":2}"#),
+        (r#"{"x":callback(1,2,"y":3}"#, r#"{"x":[1,2],"y":3}"#),
+        ("{x:callback(1,2,y:3}", r#"{"x":[1,2],"y":3}"#),
+        (
+            r#"{"x":callback({"a":1},"y":[2,3]}"#,
+            r#"{"x":{"a":1},"y":[2,3]}"#,
+        ),
+        (
+            r#"{"x":callback(1, /* key */ 'y' /* colon */ :2}"#,
+            r#"{"x":1,  "y"  :2}"#,
+        ),
+        (r#"{"x":callback(1,"y\"z":2}"#, r#"{"x":1,"y\"z":2}"#),
+        (r#"{"x":callback(1,键:2}"#, r#"{"x":1,"键":2}"#),
+        (
+            r#"{"x":new ObjectId("a","b","y":2}"#,
+            r#"{"x":["a","b"],"y":2}"#,
+        ),
+        (
+            r#"{"x":callback(callback(1,2,"y":3}"#,
+            r#"{"x":[1,2],"y":3}"#,
+        ),
+        (r#"{"x":callback(1,"y":2,"z":3}"#, r#"{"x":1,"y":2,"z":3}"#),
+        (r#"{"x":callback(1,"y":}"#, r#"{"x":1,"y":null}"#),
+        (
+            r#"callback("a:b",{"key":2},[3,4]);"#,
+            r#"["a:b",{"key":2},[3,4]]"#,
+        ),
+        (
+            r#"{"x":callback(1,https://example.com}"#,
+            r#"{"x":[1,"https://example.com"]}"#,
+        ),
+        (
+            r#"{"x":callback(1,callback(2,"y":3}"#,
+            r#"{"x":[1,2],"y":3}"#,
+        ),
+        (r#"{"x":callback([1],2,"y":3}"#, r#"{"x":[[1],2],"y":3}"#),
+        ("[{x:callback(1,y:2}]", r#"[{"x":1,"y":2}]"#),
         ("callback()", "null"),
     ] {
         ok(input, expected);
@@ -532,6 +570,26 @@ fn known_wrappers_malformed_arguments_keep_typed_errors() {
         ),
         ("callback(,2)", JsonRepairErrorKind::UnexpectedCharacter, 9),
         ("callback(1,", JsonRepairErrorKind::UnexpectedEnd, 11),
+        (
+            r#"callback(1,"y":2)"#,
+            JsonRepairErrorKind::UnexpectedCharacter,
+            14,
+        ),
+        (
+            r#"[callback(1,"y":2)]"#,
+            JsonRepairErrorKind::UnexpectedCharacter,
+            15,
+        ),
+        (
+            r#"[callback({"x":1},"y":2)]"#,
+            JsonRepairErrorKind::UnexpectedCharacter,
+            21,
+        ),
+        (
+            r#"{"x":callback(1,https:/}"#,
+            JsonRepairErrorKind::UnexpectedCharacter,
+            22,
+        ),
         (
             r#"{"x":callback(1,}"#,
             JsonRepairErrorKind::UnexpectedCharacter,

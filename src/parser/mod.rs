@@ -22,6 +22,7 @@ pub struct JsonRepairer {
     pub(super) pos: usize,
     pub(super) output: String,
     pub(super) depth: usize,
+    pub(super) in_object: bool,
 }
 
 impl JsonRepairer {
@@ -32,6 +33,7 @@ impl JsonRepairer {
             pos: 0,
             output: String::with_capacity(input.len()),
             depth: 0,
+            in_object: false,
         }
     }
 

@@ -10,6 +10,8 @@ impl JsonRepairer {
         }
 
         self.enter_container()?;
+        let was_in_object = self.in_object;
+        self.in_object = false;
         self.output.push('[');
         let frame_start = self.output.len();
         self.pos += 1;
@@ -55,6 +57,7 @@ impl JsonRepairer {
             self.insert_before_last_whitespace("]");
         }
         self.leave_container();
+        self.in_object = was_in_object;
         Ok(true)
     }
 }
