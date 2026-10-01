@@ -59,10 +59,23 @@ fn known_wrappers_multiple_arguments_and_errors() {
         (r#"callback(callback({"a":1}),2)"#, Some(r#"[{"a":1},2]"#)),
         (r#"callback({"a":1})"#, Some(r#"{"a":1}"#)),
         (r#"ObjectId("abc")"#, Some(r#""abc""#)),
+        (r#"{"x":callback(1,2}"#, Some(r#"{"x":[1,2]}"#)),
+        ("[callback(1,2]", Some("[[1,2]]")),
+        (
+            r#"{"x":callback(callback(1,2),3}"#,
+            Some(r#"{"x":[[1,2],3]}"#),
+        ),
+        (r#"{"x":ObjectId("a","b"}"#, Some(r#"{"x":["a","b"]}"#)),
+        (r#"{"x":callback(1}"#, Some(r#"{"x":1}"#)),
+        ("[callback(1]", Some("[1]")),
+        ("callback()", Some("null")),
         ("callback(1,)", None),
         ("callback(1,,2)", None),
         ("callback(,2)", None),
         ("callback(1,", None),
+        (r#"{"x":callback(1,}"#, None),
+        ("[callback(1,]", None),
+        ("callback(1,2;)", None),
         (r#"ObjectId("a","\uZZZZ")"#, None),
     ] {
         let mut child = Command::new(bin())

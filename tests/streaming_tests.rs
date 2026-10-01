@@ -27,6 +27,13 @@ fn known_wrappers_multiple_arguments_across_reader_chunks() {
         (r#"callback(callback({"a":1}),2)"#, r#"[{"a":1},2]"#),
         (r#"callback({"a":1})"#, r#"{"a":1}"#),
         (r#"ObjectId("abc")"#, r#""abc""#),
+        (r#"{"x":callback(1,2}"#, r#"{"x":[1,2]}"#),
+        ("[callback(1,2]", "[[1,2]]"),
+        (r#"{"x":callback(callback(1,2),3}"#, r#"{"x":[[1,2],3]}"#),
+        (r#"{"x":ObjectId("a","b"}"#, r#"{"x":["a","b"]}"#),
+        (r#"{"x":callback(1}"#, r#"{"x":1}"#),
+        ("[callback(1]", "[1]"),
+        ("callback()", "null"),
     ] {
         for chunk_size in 1..=5 {
             let mut output = Vec::new();
@@ -52,6 +59,9 @@ fn known_wrappers_malformed_arguments_write_no_partial_output() {
         "callback(1,,2)",
         "callback(,2)",
         "callback(1,",
+        r#"{"x":callback(1,}"#,
+        "[callback(1,]",
+        "callback(1,2;)",
         r#"ObjectId("a","\uZZZZ")"#,
     ] {
         let expected = jsonrepair(input).expect_err(input);

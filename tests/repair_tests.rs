@@ -506,6 +506,13 @@ fn known_wrappers_multiple_arguments() {
             " [  1,  2 ] ",
         ),
         ("callback(1,2", "[1,2]"),
+        (r#"{"x":callback(1,2}"#, r#"{"x":[1,2]}"#),
+        ("[callback(1,2]", "[[1,2]]"),
+        (r#"{"x":callback(callback(1,2),3}"#, r#"{"x":[[1,2],3]}"#),
+        (r#"{"x":ObjectId("a","b"}"#, r#"{"x":["a","b"]}"#),
+        (r#"{"x":callback(1}"#, r#"{"x":1}"#),
+        ("[callback(1]", "[1]"),
+        ("callback()", "null"),
     ] {
         ok(input, expected);
         serde_json::from_str::<serde_json::Value>(expected).unwrap();
@@ -525,6 +532,16 @@ fn known_wrappers_malformed_arguments_keep_typed_errors() {
         ),
         ("callback(,2)", JsonRepairErrorKind::UnexpectedCharacter, 9),
         ("callback(1,", JsonRepairErrorKind::UnexpectedEnd, 11),
+        (
+            r#"{"x":callback(1,}"#,
+            JsonRepairErrorKind::UnexpectedCharacter,
+            16,
+        ),
+        (
+            "[callback(1,]",
+            JsonRepairErrorKind::UnexpectedCharacter,
+            12,
+        ),
         (
             "callback(1,2;)",
             JsonRepairErrorKind::UnexpectedCharacter,

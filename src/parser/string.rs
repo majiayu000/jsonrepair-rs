@@ -528,7 +528,7 @@ impl JsonRepairer {
                     ));
                 }
             }
-            if self.peek() != Some(')') && !self.at_end() {
+            if !matches!(self.peek(), Some(')' | '}' | ']')) && !self.at_end() {
                 return Err(self.error_char_kind(
                     "Unexpected character",
                     JsonRepairErrorKind::UnexpectedCharacter,
