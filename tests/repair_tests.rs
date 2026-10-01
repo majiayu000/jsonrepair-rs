@@ -688,6 +688,38 @@ fn truncated_url_with_following_prose() {
 }
 
 #[test]
+fn truncated_url_prose_before_comments() {
+    for (input, expected) in [
+        (
+            r#"{"content":"see https://example.com/foo and more/* trailing */}"#,
+            r#"{"content":"see https://example.com/foo and more"}"#,
+        ),
+        (
+            r#"["see https://example.com/foo and/or more /* trailing */,1]"#,
+            r#"["see https://example.com/foo and/or more" ,1]"#,
+        ),
+        (
+            "{\"content\":\"see https://example.com/foo and/or more// trailing\n}",
+            "{\"content\":\"see https://example.com/foo and/or more\"\n}",
+        ),
+        (
+            "[\"see https://example.com/a%20b and more // trailing\n,1]",
+            "[\"see https://example.com/a%20b and more\" \n,1]",
+        ),
+        (
+            r#"{"content":"see https://example.com/foo and more/* trailing */"}"#,
+            r#"{"content":"see https://example.com/foo and more/* trailing */"}"#,
+        ),
+        (
+            r#"{"content":"see https://example.com/foo and more// trailing"}"#,
+            r#"{"content":"see https://example.com/foo and more// trailing"}"#,
+        ),
+    ] {
+        ok(input, expected);
+    }
+}
+
+#[test]
 fn truncated_url_after_real_newline_preserves_content() {
     ok(
         r##"{"content":"# Heading\nhttps://example.com/foo}"##,

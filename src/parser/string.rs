@@ -117,7 +117,9 @@ impl JsonRepairer {
                 self.pos = quote_pos + 1;
             } else if stop_at_delimiter
                 && chars::is_unquoted_string_delimiter(c)
-                && !(c == '/' && url_followed_by_content)
+                && !(c == '/'
+                    && url_followed_by_content
+                    && !matches!(self.peek_at(self.pos + 1), Some('/' | '*')))
             {
                 // Keep a URL on the next line inside the truncated string.
                 if c == '\n' {

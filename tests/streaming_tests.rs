@@ -137,6 +137,30 @@ fn preserves_url_with_following_prose_across_reader_chunks() {
 }
 
 #[test]
+fn preserves_url_prose_before_comments_across_reader_chunks() {
+    for (input, expected) in [
+        (
+            r#"{"content":"see https://example.com/foo and/or more/* trailing */}"#,
+            r#"{"content":"see https://example.com/foo and/or more"}"#,
+        ),
+        (
+            "{\"content\":\"see https://example.com/foo and more// trailing\n}",
+            "{\"content\":\"see https://example.com/foo and more\"\n}",
+        ),
+    ] {
+        for chunk_size in 1..=5 {
+            let mut output = Vec::new();
+            jsonrepair_reader_to_writer(
+                ChunkedReader::new(input.as_bytes(), chunk_size),
+                &mut output,
+            )
+            .unwrap();
+            assert_eq!(output, expected.as_bytes(), "chunk size {chunk_size}");
+        }
+    }
+}
+
+#[test]
 fn preserves_repair_errors_without_partial_output() {
     for input in [&br#""\u00""#[..], &b"[\x0c"[..], &br#""\udfff""#[..]] {
         let mut output = Vec::new();
