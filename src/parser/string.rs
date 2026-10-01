@@ -41,6 +41,17 @@ impl JsonRepairer {
         self.output.push('"');
         self.pos += 1;
         let mut parenthesis_depth = 0usize;
+        let is_wrapper_close = |input: &[char], pos: usize, depth: usize| {
+            if !is_wrapper_argument || input.get(pos) != Some(&')') || depth != 0 {
+                return false;
+            }
+            // A right parenthesis followed by string content is literal.
+            let next = input[pos + 1..]
+                .iter()
+                .copied()
+                .find(|&ch| !chars::is_whitespace(ch) || matches!(ch, '\n' | '\r'));
+            next.map_or(true, |ch| chars::is_delimiter(ch) || ch == '#')
+        };
 
         loop {
             if self.at_end() {
@@ -118,7 +129,7 @@ impl JsonRepairer {
                 self.pos = quote_pos + 1;
             } else if stop_at_delimiter
                 && (chars::is_unquoted_string_delimiter(c)
-                    || (is_wrapper_argument && c == ')' && parenthesis_depth == 0))
+                    || is_wrapper_close(&self.chars, self.pos, parenthesis_depth))
             {
                 // URL like "https://..." should not stop at '/'.
                 if c == '/'
@@ -130,7 +141,7 @@ impl JsonRepairer {
                 {
                     while self.peek().is_some_and(chars::is_url_char) {
                         let url_char = self.chars[self.pos];
-                        if is_wrapper_argument && url_char == ')' && parenthesis_depth == 0 {
+                        if is_wrapper_close(&self.chars, self.pos, parenthesis_depth) {
                             break;
                         }
                         if url_char == '(' {
@@ -642,6 +653,33 @@ impl JsonRepairer {
                     cursor += 1;
                 }
                 continue;
+            }
+            if !in_url && c == '/' {
+                let mut regex_cursor = cursor + 1;
+                let mut escaped = false;
+                let mut regex_end = None;
+                while let Some(regex_char) = self.peek_at(regex_cursor) {
+                    if matches!(regex_char, '\n' | '\r') {
+                        break;
+                    }
+                    regex_cursor += 1;
+                    // Match the existing regex parser's unescaped-slash boundary.
+                    if regex_char == '/' && !escaped {
+                        regex_end = Some(regex_cursor);
+                        break;
+                    }
+                    escaped = regex_char == '\\' && !escaped;
+                }
+                if let Some(end) = regex_end {
+                    cursor = end;
+                    while self
+                        .peek_at(cursor)
+                        .is_some_and(|ch| ch.is_ascii_alphabetic())
+                    {
+                        cursor += 1;
+                    }
+                    continue;
+                }
             }
             match c {
                 '{' | '[' => containers += 1,

@@ -540,3 +540,121 @@ fn known_wrappers_regex_argument_boundaries() {
         }
     }
 }
+
+#[test]
+fn known_wrappers_closed_regex_lookahead() {
+    for (input, expected) in [
+        (
+            r###"{x:callback(1,/}/,a:b)}"###,
+            r###"{"x":[1,"/}/","a:b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,/]/,a:b)}"###,
+            r###"{"x":[1,"/]/","a:b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,/(/,a:b)}"###,
+            r###"{"x":[1,"/(/","a:b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,/)/,a:b)}"###,
+            r###"{"x":[1,"/)/","a:b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,/[{}()]/i,a:b)}"###,
+            r###"{"x":[1,"/[{}()]/i","a:b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,/\}\)\//g,a:b)}"###,
+            r###"{"x":[1,"/\\}\\)\\//g","a:b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,/(a)b/,a:b)}"###,
+            r###"{"x":[1,"/(a)b/","a:b"]}"###,
+        ),
+        (r###"callback(1,/}/,a:b)"###, r###"[1,"/}/","a:b"]"###),
+        (r###"[callback(1,/}/,a:b)]"###, r###"[[1,"/}/","a:b"]]"###),
+        (
+            r###"{x:NumberLong(1,/}/,a=b)}"###,
+            r###"{"x":[1,"/}/","a=b"]}"###,
+        ),
+        (
+            r###"{x:callback(1,/}/,a:b),y:2}"###,
+            r###"{"x":[1,"/}/","a:b"],"y":2}"###,
+        ),
+        (
+            r###"{x:callback(1,/}/,y:2}"###,
+            r###"{"x":[1,"/}/"],"y":2}"###,
+        ),
+        (
+            r###"{x:callback(1,/}/,y=2}"###,
+            r###"{"x":[1,"/}/"],"y":2}"###,
+        ),
+    ] {
+        for chunk_size in 1..=5 {
+            let mut output = Vec::new();
+            jsonrepair_reader_to_writer(
+                ChunkedReader::new(input.as_bytes(), chunk_size),
+                &mut output,
+            )
+            .unwrap();
+            assert_eq!(
+                output,
+                expected.as_bytes(),
+                "input {input:?}, chunk {chunk_size}"
+            );
+            serde_json::from_slice::<serde_json::Value>(&output).unwrap();
+        }
+    }
+}
+
+#[test]
+fn known_wrappers_quoted_literal_parentheses() {
+    for (input, expected) in [
+        (r###"callback(1,"foo)bar)"###, r###"[1,"foo)bar"]"###),
+        (
+            r###"{x:callback(1,"foo)bar)}"###,
+            r###"{"x":[1,"foo)bar"]}"###,
+        ),
+        (r###"[callback(1,"foo)bar)]"###, r###"[[1,"foo)bar"]]"###),
+        (r###"ObjectId("foo)bar)"###, r###""foo)bar""###),
+        (r###"callback("foo)bar)"###, r###""foo)bar""###),
+        (r###"callback(1,"foo)bar);"###, r###"[1,"foo)bar"]"###),
+        (
+            r###"callback(1,"foo)bar,baz)"###,
+            r###"[1,"foo)bar","baz"]"###,
+        ),
+        (
+            r###"callback(1,callback(2,"foo)bar))"###,
+            r###"[1,[2,"foo)bar"]]"###,
+        ),
+        (r###"callback(1,"foo(bar))"###, r###"[1,"foo(bar)"]"###),
+        (r###"callback(1,"foo)bar")"###, r###"[1,"foo)bar"]"###),
+        (
+            r###"callback(1,"foo\"bar)baz)"###,
+            r###"[1,"foo\"bar)baz"]"###,
+        ),
+        (
+            r###"callback(1,"https://example.com/foo)bar)"###,
+            r###"[1,"https://example.com/foo)bar"]"###,
+        ),
+        (r###""foo)bar""###, r###""foo)bar""###),
+        (r###"{x:"foo)bar}"###, r###"{"x":"foo)bar"}"###),
+        (r###"callback(1,"foo)"###, r###"[1,"foo"]"###),
+    ] {
+        for chunk_size in 1..=5 {
+            let mut output = Vec::new();
+            jsonrepair_reader_to_writer(
+                ChunkedReader::new(input.as_bytes(), chunk_size),
+                &mut output,
+            )
+            .unwrap();
+            assert_eq!(
+                output,
+                expected.as_bytes(),
+                "input {input:?}, chunk {chunk_size}"
+            );
+            serde_json::from_slice::<serde_json::Value>(&output).unwrap();
+        }
+    }
+}
