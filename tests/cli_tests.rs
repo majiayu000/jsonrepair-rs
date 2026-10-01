@@ -529,3 +529,100 @@ fn known_wrappers_direct_argument_boundaries() {
         serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap();
     }
 }
+
+#[test]
+fn known_wrappers_equals_properties() {
+    for (input, expected) in [
+        (r###"{x:callback(1,y=2}"###, r###"{"x":1,"y":2}"###),
+        (r###"{"x":callback(1,"y"=2}"###, r###"{"x":1,"y":2}"###),
+        (r###"{x:callback(1,'y'=2}"###, r###"{"x":1,"y":2}"###),
+        (
+            r###"{x:callback(1,y /*key*/ =2}"###,
+            r###"{"x":1,"y"  :2}"###,
+        ),
+        (r###"{x:callback(1,2,y=3}"###, r###"{"x":[1,2],"y":3}"###),
+        (r###"{x:callback(,y=2}"###, r###"{"x":null,"y":2}"###),
+        (r###"{x:callback(,"y"=2}"###, r###"{"x":null,"y":2}"###),
+        (r###"{y=2}"###, r###"{"y":2}"###),
+        (r###"{"y"=2}"###, r###"{"y":2}"###),
+        (r###"{x:callback(1,y=2)}"###, r###"{"x":[1,"y=2"]}"###),
+        (r###"callback(1,y=2)"###, r###"[1,"y=2"]"###),
+        (r###"[callback(1,y=2)]"###, r###"[[1,"y=2"]]"###),
+        (
+            r###"{x:callback(1,https://example.com/?y=2)}"###,
+            r###"{"x":[1,"https://example.com/?y=2"]}"###,
+        ),
+        (r###"{x:callback(1,"y=2")}"###, r###"{"x":[1,"y=2"]}"###),
+    ] {
+        let mut child = Command::new(bin())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success(), "input {input:?}: {output:?}");
+        assert_eq!(output.stdout, expected.as_bytes(), "input {input:?}");
+        assert!(output.stderr.is_empty(), "input {input:?}: {output:?}");
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap();
+    }
+}
+
+#[test]
+fn known_wrappers_regex_argument_boundaries() {
+    for (input, expected) in [
+        (r###"callback(1,/foo)"###, r###"[1,"/foo/"]"###),
+        (r###"{x:callback(1,/foo)}"###, r###"{"x":[1,"/foo/"]}"###),
+        (r###"[callback(1,/foo)]"###, r###"[[1,"/foo/"]]"###),
+        (r###"ObjectId(/foo)"###, r###""/foo/""###),
+        (r###"NumberLong(1,/foo)"###, r###"[1,"/foo/"]"###),
+        (r###"callback(1,/(foo)/)"###, r###"[1,"/(foo)/"]"###),
+        (r###"callback(1,/foo)/)"###, r###"[1,"/foo)/"]"###),
+        (r###"callback(1,/foo\))"###, r###"[1,"/foo\\)/"]"###),
+        (r###"callback(1,/[(]foo)"###, r###"[1,"/[(]foo/"]"###),
+        (r###"callback(1,/[)]foo)"###, r###"[1,"/[)]foo/"]"###),
+        (r###"callback(1,/foo(bar))"###, r###"[1,"/foo(bar)/"]"###),
+        (r###"callback(1,/[)]/i)"###, r###"[1,"/[)]/i"]"###),
+        (r###"callback(1,/foo)bar/i)"###, r###"[1,"/foo)bar/i"]"###),
+        (r###"callback(1,/foo\/bar)"###, r###"[1,"/foo\\/bar/"]"###),
+        (r###"/foo)"###, r###""/foo)/""###),
+        (r###"/foo"###, r###""/foo/""###),
+        (r###"/(foo)/"###, r###""/(foo)/""###),
+        (r###"/[)]/i"###, r###""/[)]/i""###),
+        (r###"{r:/foo)}"###, r###"{"r":"/foo)}/"}"###),
+        (r###"callback(1,{r:/foo)/})"###, r###"[1,{"r":"/foo)/"}]"###),
+        (r###"callback(1,[/foo)/])"###, r###"[1,["/foo)/"]]"###),
+        (
+            r###"callback(1,/foo)
+{"a":3}"###,
+            r###"[
+[1,"/foo/"],
+{"a":3}
+]"###,
+        ),
+    ] {
+        let mut child = Command::new(bin())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success(), "input {input:?}: {output:?}");
+        assert_eq!(output.stdout, expected.as_bytes(), "input {input:?}");
+        assert!(output.stderr.is_empty(), "input {input:?}: {output:?}");
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap();
+    }
+}

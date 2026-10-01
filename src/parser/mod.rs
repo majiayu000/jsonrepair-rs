@@ -85,15 +85,15 @@ impl JsonRepairer {
             finish!(true);
         }
         if c == Some('/') {
-            finish!(self.parse_slash()?);
+            finish!(self.parse_slash(is_wrapper_argument)?);
         }
 
         self.parse_whitespace_and_comments();
         Ok(false)
     }
 
-    fn parse_slash(&mut self) -> Result<bool> {
-        self.parse_regex_as_string()
+    fn parse_slash(&mut self, is_wrapper_argument: bool) -> Result<bool> {
+        self.parse_regex_as_string(is_wrapper_argument)
     }
 
     // ── Depth tracking ────────────────────────────────────

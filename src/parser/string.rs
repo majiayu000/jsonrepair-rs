@@ -376,7 +376,7 @@ impl JsonRepairer {
             if parenthesis_depth == 0
                 && (chars::is_unquoted_string_delimiter(c)
                     || chars::is_quote(c)
-                    || (is_key && c == ':')
+                    || (is_key && matches!(c, ':' | '='))
                     || (is_wrapper_argument && c == ')'))
             {
                 break;
@@ -683,7 +683,7 @@ impl JsonRepairer {
             .map(|parsed| {
                 self.parse_whitespace_and_comments();
                 parsed
-                    && self.peek() == Some(':')
+                    && matches!(self.peek(), Some(':' | '='))
                     && !(self.peek_at(self.pos + 1) == Some('/')
                         && self.ends_with_url_scheme(key_start, self.pos + 1))
             });
