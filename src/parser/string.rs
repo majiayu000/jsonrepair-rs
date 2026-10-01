@@ -492,14 +492,49 @@ impl JsonRepairer {
         }
 
         self.pos = cursor + 1;
+        let output_start = self.output.len();
         self.parse_whitespace_and_comments();
-        if self.peek() == Some(')') {
+        let value_parsed = if self.peek() == Some(')') {
             self.output.push_str("null");
+            true
         } else {
             let value_parsed = self.parse_value()?;
             if !value_parsed {
                 self.output.push_str("null");
             }
+            value_parsed
+        };
+
+        if self.peek() == Some(',') {
+            if !value_parsed {
+                return Err(self.error_char_kind(
+                    "Unexpected character",
+                    JsonRepairErrorKind::UnexpectedCharacter,
+                ));
+            }
+            self.output.insert(output_start, '[');
+            while self.parse_char(',') {
+                self.parse_whitespace_and_comments();
+                if self.at_end() {
+                    return Err(self.error_kind(
+                        "Unexpected end of json string",
+                        JsonRepairErrorKind::UnexpectedEnd,
+                    ));
+                }
+                if self.peek() == Some(')') || !self.parse_value()? {
+                    return Err(self.error_char_kind(
+                        "Unexpected character",
+                        JsonRepairErrorKind::UnexpectedCharacter,
+                    ));
+                }
+            }
+            if self.peek() != Some(')') && !self.at_end() {
+                return Err(self.error_char_kind(
+                    "Unexpected character",
+                    JsonRepairErrorKind::UnexpectedCharacter,
+                ));
+            }
+            self.output.push(']');
         }
 
         if self.peek() == Some(')') {

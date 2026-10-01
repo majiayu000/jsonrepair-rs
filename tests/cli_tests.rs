@@ -48,6 +48,51 @@ fn repairs_stdin_to_stdout() {
 }
 
 #[test]
+fn known_wrappers_multiple_arguments_and_errors() {
+    for (input, expected) in [
+        (r#"callback({"a":1},2)"#, Some(r#"[{"a":1},2]"#)),
+        ("callback(1,2,3)", Some("[1,2,3]")),
+        (r#"ObjectId("a","b")"#, Some(r#"["a","b"]"#)),
+        ("NumberLong(1,2)", Some("[1,2]")),
+        (r#"callback({"a":1},2);"#, Some(r#"[{"a":1},2]"#)),
+        ("callback(callback(1,2),3)", Some("[[1,2],3]")),
+        (r#"callback(callback({"a":1}),2)"#, Some(r#"[{"a":1},2]"#)),
+        (r#"callback({"a":1})"#, Some(r#"{"a":1}"#)),
+        (r#"ObjectId("abc")"#, Some(r#""abc""#)),
+        ("callback(1,)", None),
+        ("callback(1,,2)", None),
+        ("callback(,2)", None),
+        ("callback(1,", None),
+        (r#"ObjectId("a","\uZZZZ")"#, None),
+    ] {
+        let mut child = Command::new(bin())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+
+        if let Some(expected) = expected {
+            assert!(output.status.success(), "input {input:?}: {output:?}");
+            assert_eq!(output.stdout, expected.as_bytes(), "input: {input:?}");
+            serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap();
+            assert!(output.stderr.is_empty(), "{output:?}");
+        } else {
+            assert_eq!(output.status.code(), Some(1), "input {input:?}: {output:?}");
+            assert!(output.stdout.is_empty(), "input {input:?}: {output:?}");
+            assert!(String::from_utf8_lossy(&output.stderr).contains("JSON repair error"));
+        }
+    }
+}
+
+#[test]
 fn repairs_file_to_output_file() {
     let input_path = temp_path("input");
     let output_path = temp_path("output");

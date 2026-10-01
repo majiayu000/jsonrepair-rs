@@ -16,6 +16,62 @@ fn repairs_reader_to_writer() {
 }
 
 #[test]
+fn known_wrappers_multiple_arguments_across_reader_chunks() {
+    for (input, expected) in [
+        (r#"callback({"a":1},2)"#, r#"[{"a":1},2]"#),
+        ("callback(1,2,3)", "[1,2,3]"),
+        (r#"ObjectId("a","b")"#, r#"["a","b"]"#),
+        ("NumberLong(1,2)", "[1,2]"),
+        (r#"callback({"a":1},2);"#, r#"[{"a":1},2]"#),
+        ("callback(callback(1,2),3)", "[[1,2],3]"),
+        (r#"callback(callback({"a":1}),2)"#, r#"[{"a":1},2]"#),
+        (r#"callback({"a":1})"#, r#"{"a":1}"#),
+        (r#"ObjectId("abc")"#, r#""abc""#),
+    ] {
+        for chunk_size in 1..=5 {
+            let mut output = Vec::new();
+            jsonrepair_reader_to_writer(
+                ChunkedReader::new(input.as_bytes(), chunk_size),
+                &mut output,
+            )
+            .unwrap();
+            assert_eq!(
+                output,
+                expected.as_bytes(),
+                "input {input:?}, chunk {chunk_size}"
+            );
+            serde_json::from_slice::<serde_json::Value>(&output).unwrap();
+        }
+    }
+}
+
+#[test]
+fn known_wrappers_malformed_arguments_write_no_partial_output() {
+    for input in [
+        "callback(1,)",
+        "callback(1,,2)",
+        "callback(,2)",
+        "callback(1,",
+        r#"ObjectId("a","\uZZZZ")"#,
+    ] {
+        let expected = jsonrepair(input).expect_err(input);
+        for chunk_size in 1..=5 {
+            let mut output = Vec::new();
+            let error = jsonrepair_reader_to_writer(
+                ChunkedReader::new(input.as_bytes(), chunk_size),
+                &mut output,
+            )
+            .unwrap_err();
+            match error {
+                JsonRepairStreamError::Repair(error) => assert_eq!(error, expected),
+                other => panic!("expected repair error for {input:?}, got {other:?}"),
+            }
+            assert!(output.is_empty(), "input {input:?}, chunk {chunk_size}");
+        }
+    }
+}
+
+#[test]
 fn matches_string_api_for_file_sized_input() {
     let mut lines = Vec::new();
     for index in 0..2048 {

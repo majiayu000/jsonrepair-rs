@@ -482,6 +482,69 @@ fn jsonp_callback() {
 }
 
 #[test]
+fn known_wrappers_multiple_arguments() {
+    for (input, expected) in [
+        (r#"callback({"a":1},2)"#, r#"[{"a":1},2]"#),
+        ("callback(1,2,3)", "[1,2,3]"),
+        (r#"ObjectId("a","b")"#, r#"["a","b"]"#),
+        (r#"ObjectId("a", "b")"#, r#"["a", "b"]"#),
+        ("NumberLong(1,2)", "[1,2]"),
+        (r#"callback({"a":1},2);"#, r#"[{"a":1},2]"#),
+        (r#"callback(callback({"a":1}),2)"#, r#"[{"a":1},2]"#),
+        ("callback(callback(1,2),3)", "[[1,2],3]"),
+        (
+            r#"{"ids":new ObjectId("a","b"),"n":NumberLong(1,2)}"#,
+            r#"{"ids":["a","b"],"n":[1,2]}"#,
+        ),
+        ("[callback(1,2),callback(3,4)]", "[[1,2],[3,4]]"),
+        (
+            r#"callback("a,b)",[1,2],{"x":3})"#,
+            r#"["a,b)",[1,2],{"x":3}]"#,
+        ),
+        (
+            " callback( /* before */ 1, /* between */ 2 ); ",
+            " [  1,  2 ] ",
+        ),
+        ("callback(1,2", "[1,2]"),
+    ] {
+        ok(input, expected);
+        serde_json::from_str::<serde_json::Value>(expected).unwrap();
+    }
+}
+
+#[test]
+fn known_wrappers_malformed_arguments_keep_typed_errors() {
+    use jsonrepair_rs::JsonRepairErrorKind;
+
+    for (input, kind, position) in [
+        ("callback(1,)", JsonRepairErrorKind::UnexpectedCharacter, 11),
+        (
+            "callback(1,,2)",
+            JsonRepairErrorKind::UnexpectedCharacter,
+            11,
+        ),
+        ("callback(,2)", JsonRepairErrorKind::UnexpectedCharacter, 9),
+        ("callback(1,", JsonRepairErrorKind::UnexpectedEnd, 11),
+        (
+            "callback(1,2;)",
+            JsonRepairErrorKind::UnexpectedCharacter,
+            12,
+        ),
+        (
+            r#"ObjectId("a","\uZZZZ")"#,
+            JsonRepairErrorKind::InvalidUnicode,
+            14,
+        ),
+    ] {
+        let error = jsonrepair(input).expect_err(input);
+        assert_eq!(error.kind, kind, "input: {input:?}");
+        assert_eq!(error.position, position, "input: {input:?}");
+        assert_eq!(error.line, 1);
+        assert_eq!(error.column, position + 1);
+    }
+}
+
+#[test]
 fn trailing_semicolon() {
     ok(r#"{"a": 1};"#, r#"{"a": 1}"#);
     ok("1;", "1");
