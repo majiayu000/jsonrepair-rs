@@ -80,7 +80,7 @@ impl JsonRepairer {
                 }
             }
 
-            let processed_value = self.parse_value()?;
+            let processed_value = self.parse_value(false)?;
             if !processed_value {
                 if processed_colon || truncated {
                     // Missing object value.
@@ -110,7 +110,7 @@ impl JsonRepairer {
         if self.parse_string()? {
             return Ok(true);
         }
-        self.parse_unquoted_string(true)
+        self.parse_unquoted_string(true, false)
     }
 
     /// Parse and skip `...` (ellipsis), returning true if found.

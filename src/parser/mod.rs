@@ -38,7 +38,8 @@ impl JsonRepairer {
     }
 
     // repair() and parse_ndjson() are in toplevel.rs
-    pub(super) fn parse_value(&mut self) -> Result<bool> {
+    // The closing-parenthesis boundary applies only to a direct wrapper argument.
+    pub(super) fn parse_value(&mut self, is_wrapper_argument: bool) -> Result<bool> {
         self.parse_whitespace_and_comments();
         let c = self.peek();
         macro_rules! finish {
@@ -75,10 +76,12 @@ impl JsonRepairer {
         {
             finish!(true);
         }
-        if c.is_some_and(chars::is_identifier_start) && self.parse_keyword_or_unquoted()? {
+        if c.is_some_and(chars::is_identifier_start)
+            && self.parse_keyword_or_unquoted(is_wrapper_argument)?
+        {
             finish!(true);
         }
-        if self.parse_unquoted_string(false)? {
+        if self.parse_unquoted_string(false, is_wrapper_argument)? {
             finish!(true);
         }
         if c == Some('/') {

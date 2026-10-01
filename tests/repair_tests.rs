@@ -550,6 +550,48 @@ fn known_wrappers_multiple_arguments() {
         ),
         (r#"{"x":callback([1],2,"y":3}"#, r#"{"x":[[1],2],"y":3}"#),
         ("[{x:callback(1,y:2}]", r#"[{"x":1,"y":2}]"#),
+        (r#"{"x":callback(1,foo)}"#, r#"{"x":[1,"foo"]}"#),
+        (
+            r#"{"x":callback(1,https://example.com)}"#,
+            r#"{"x":[1,"https://example.com"]}"#,
+        ),
+        (r#"callback(1,foo)"#, r#"[1,"foo"]"#),
+        (r#"[callback(1,foo)]"#, r#"[[1,"foo"]]"#),
+        (r#"callback(foo,bar)"#, r#"["foo","bar"]"#),
+        (r#"callback(foo)"#, r#""foo""#),
+        (r#"callback(1,foo);"#, r#"[1,"foo"]"#),
+        (r#"callback(1,foo(bar))"#, r#"[1,"foo(bar)"]"#),
+        (
+            r#"callback(1,https://example.com/path_(a))"#,
+            r#"[1,"https://example.com/path_(a)"]"#,
+        ),
+        (
+            r#"callback(1,https://example.com/path_(a(b)))"#,
+            r#"[1,"https://example.com/path_(a(b))"]"#,
+        ),
+        (r#"callback(1,callback(2,foo))"#, r#"[1,[2,"foo"]]"#),
+        (r#"callback(1,[foo)])"#, r#"[1,["foo)"]]"#),
+        (r#"callback(1,{x:foo)})"#, r#"[1,{"x":"foo)"}]"#),
+        (r#"new ObjectId(1,foo)"#, r#"[1,"foo"]"#),
+        (r#"NumberLong(1,foo)"#, r#"[1,"foo"]"#),
+        (r#"callback(1,值)"#, r#"[1,"值"]"#),
+        (r#"callback(1,"foo)")"#, r#"[1,"foo)"]"#),
+        (
+            r#"callback(1,"https://example.com/a)")"#,
+            r#"[1,"https://example.com/a)"]"#,
+        ),
+        (r#"{"x":callback(1,foo}"#, r#"{"x":[1,"foo"]}"#),
+        (r#"[callback(1,foo]"#, r#"[[1,"foo"]]"#),
+        (r#"{"x":callback(1,foo,"y":2}"#, r#"{"x":[1,"foo"],"y":2}"#),
+        (r#"{x:callback(1,foo,y:2}"#, r#"{"x":[1,"foo"],"y":2}"#),
+        (r#"foo)"#, r#""foo)""#),
+        (r#"{x:foo)}"#, r#"{"x":"foo)"}"#),
+        (r#"[foo)]"#, r#"["foo)"]"#),
+        (
+            r#"https://example.com/path_(a)"#,
+            r#""https://example.com/path_(a)""#,
+        ),
+        (r#"https://example.com/a)"#, r#""https://example.com/a)""#),
         ("callback()", "null"),
     ] {
         ok(input, expected);
@@ -562,6 +604,26 @@ fn known_wrappers_malformed_arguments_keep_typed_errors() {
     use jsonrepair_rs::JsonRepairErrorKind;
 
     for (input, kind, position) in [
+        (
+            r#"callback(1,foo))"#,
+            JsonRepairErrorKind::UnexpectedCharacter,
+            15,
+        ),
+        (
+            r#"callback(1,https://example.com))"#,
+            JsonRepairErrorKind::UnexpectedCharacter,
+            31,
+        ),
+        (
+            r#"callback(1,foo,)"#,
+            JsonRepairErrorKind::UnexpectedCharacter,
+            15,
+        ),
+        (
+            r#"callback(1,https:/)"#,
+            JsonRepairErrorKind::UnexpectedCharacter,
+            17,
+        ),
         ("callback(1,)", JsonRepairErrorKind::UnexpectedCharacter, 11),
         (
             "callback(1,,2)",

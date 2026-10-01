@@ -22,7 +22,7 @@ impl JsonRepairer {
 
         self.parse_whitespace_and_comments();
 
-        let processed_value = self.parse_value()?;
+        let processed_value = self.parse_value(false)?;
         if !processed_value {
             return Ok(false);
         }

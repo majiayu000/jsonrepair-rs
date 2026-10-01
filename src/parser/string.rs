@@ -325,7 +325,11 @@ impl JsonRepairer {
     }
 
     /// Parse unquoted string values and function-call wrappers (MongoDB/JSONP).
-    pub(super) fn parse_unquoted_string(&mut self, is_key: bool) -> Result<bool> {
+    pub(super) fn parse_unquoted_string(
+        &mut self,
+        is_key: bool,
+        is_wrapper_argument: bool,
+    ) -> Result<bool> {
         let start = self.pos;
 
         if !is_key
@@ -353,7 +357,8 @@ impl JsonRepairer {
             if parenthesis_depth == 0
                 && (chars::is_unquoted_string_delimiter(c)
                     || chars::is_quote(c)
-                    || (is_key && c == ':'))
+                    || (is_key && c == ':')
+                    || (is_wrapper_argument && c == ')'))
             {
                 break;
             }
@@ -364,7 +369,15 @@ impl JsonRepairer {
             && self.peek_at(self.pos.saturating_sub(1)) == Some(':')
             && self.looks_like_url_start(start, self.pos)
         {
-            while self.peek().is_some_and(chars::is_url_char) {
+            while let Some(c) = self.peek().filter(|&c| chars::is_url_char(c)) {
+                if is_wrapper_argument && c == ')' && parenthesis_depth == 0 {
+                    break;
+                }
+                if c == '(' {
+                    parenthesis_depth += 1;
+                } else if c == ')' {
+                    parenthesis_depth = parenthesis_depth.saturating_sub(1);
+                }
                 self.pos += 1;
             }
         }
@@ -498,7 +511,7 @@ impl JsonRepairer {
             self.output.push_str("null");
             true
         } else {
-            let value_parsed = self.parse_value()?;
+            let value_parsed = self.parse_value(true)?;
             if !value_parsed {
                 self.output.push_str("null");
             }
@@ -527,7 +540,7 @@ impl JsonRepairer {
                         JsonRepairErrorKind::UnexpectedEnd,
                     ));
                 }
-                if self.peek() == Some(')') || !self.parse_value()? {
+                if self.peek() == Some(')') || !self.parse_value(true)? {
                     return Err(self.error_char_kind(
                         "Unexpected character",
                         JsonRepairErrorKind::UnexpectedCharacter,
@@ -571,7 +584,7 @@ impl JsonRepairer {
                 if parsed {
                     Ok(true)
                 } else {
-                    self.parse_unquoted_string(true)
+                    self.parse_unquoted_string(true, false)
                 }
             })
             .map(|parsed| {
