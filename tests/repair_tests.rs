@@ -2272,94 +2272,100 @@ fn known_wrappers_repaired_quote_and_hash_lookahead() {
 
 #[test]
 fn known_wrappers_share_container_depth_budget() {
-    run_with_large_stack(|| {
-        let limit = jsonrepair(&"[".repeat(513)).unwrap_err().position;
-        for wrapper in ["callback(0,", "ObjectId(", "NumberLong(", "callback("] {
-            let good = format!(
-                "{}{}0){}",
-                "[".repeat(limit - 1),
-                wrapper,
-                "]".repeat(limit - 1)
-            );
-            let value = if wrapper == "callback(0," {
-                "[0,0]"
-            } else {
-                "0"
-            };
-            assert_eq!(
-                jsonrepair(&good).unwrap(),
-                format!(
-                    "{}{}{}",
+    std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| {
+            let limit = jsonrepair(&"[".repeat(513)).unwrap_err().position;
+            for wrapper in ["callback(0,", "ObjectId(", "NumberLong(", "callback("] {
+                let good = format!(
+                    "{}{}0){}",
                     "[".repeat(limit - 1),
-                    value,
+                    wrapper,
                     "]".repeat(limit - 1)
-                )
-            );
-            let input = format!("{}{}0){}", "[".repeat(limit), wrapper, "]".repeat(limit));
-            let error = jsonrepair(&input).unwrap_err();
-            assert_eq!(
-                error.kind,
-                jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
-            );
-            assert_eq!(error.message, "Maximum nesting depth exceeded");
-            assert_eq!(error.position, limit + wrapper.find('(').unwrap());
-            assert_eq!((error.line, error.column), (1, error.position + 1));
-        }
-        for wrapper in ["callback(0,", "ObjectId("] {
-            let input = format!("{}0{}", wrapper.repeat(limit), ")".repeat(limit));
-            let expected = if wrapper == "callback(0," {
-                format!("{}0{}", "[0,".repeat(limit), "]".repeat(limit))
-            } else {
-                "0".to_owned()
-            };
-            assert_eq!(jsonrepair(&input).unwrap(), expected);
-            let input = format!("{}0{}", wrapper.repeat(limit + 1), ")".repeat(limit + 1));
-            let error = jsonrepair(&input).unwrap_err();
-            assert_eq!(
-                error.kind,
-                jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
-            );
-            assert_eq!(error.message, "Maximum nesting depth exceeded");
-            assert_eq!(
-                error.position,
-                wrapper.len() * limit + wrapper.find('(').unwrap()
-            );
-        }
-        let input = format!(
-            "{{x:{}callback(0,0){}}}",
-            "[".repeat(limit - 2),
-            "]".repeat(limit - 2)
-        );
-        assert_eq!(
-            jsonrepair(&input).unwrap(),
-            format!(
-                "{{\"x\":{}[0,0]{}}}",
+                );
+                let value = if wrapper == "callback(0," {
+                    "[0,0]"
+                } else {
+                    "0"
+                };
+                assert_eq!(
+                    jsonrepair(&good).unwrap(),
+                    format!(
+                        "{}{}{}",
+                        "[".repeat(limit - 1),
+                        value,
+                        "]".repeat(limit - 1)
+                    )
+                );
+                let input = format!("{}{}0){}", "[".repeat(limit), wrapper, "]".repeat(limit));
+                let error = jsonrepair(&input).unwrap_err();
+                assert_eq!(
+                    error.kind,
+                    jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+                );
+                assert_eq!(error.message, "Maximum nesting depth exceeded");
+                assert_eq!(error.position, limit + wrapper.find('(').unwrap());
+                assert_eq!((error.line, error.column), (1, error.position + 1));
+            }
+            for wrapper in ["callback(0,", "ObjectId("] {
+                let input = format!("{}0{}", wrapper.repeat(limit), ")".repeat(limit));
+                let expected = if wrapper == "callback(0," {
+                    format!("{}0{}", "[0,".repeat(limit), "]".repeat(limit))
+                } else {
+                    "0".to_owned()
+                };
+                assert_eq!(jsonrepair(&input).unwrap(), expected);
+                let input = format!("{}0{}", wrapper.repeat(limit + 1), ")".repeat(limit + 1));
+                let error = jsonrepair(&input).unwrap_err();
+                assert_eq!(
+                    error.kind,
+                    jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+                );
+                assert_eq!(error.message, "Maximum nesting depth exceeded");
+                assert_eq!(
+                    error.position,
+                    wrapper.len() * limit + wrapper.find('(').unwrap()
+                );
+            }
+            let input = format!(
+                "{{x:{}callback(0,0){}}}",
                 "[".repeat(limit - 2),
                 "]".repeat(limit - 2)
-            )
-        );
-        let input = format!(
-            "{{x:{}callback(0,0){}}}",
-            "[".repeat(limit - 1),
-            "]".repeat(limit - 1)
-        );
-        assert_eq!(
-            jsonrepair(&input).unwrap_err().kind,
-            jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
-        );
-        let sibling = format!(
-            "{}0{}",
-            "callback(0,".repeat(limit - 1),
-            ")".repeat(limit - 1)
-        );
-        let value = format!("{}0{}", "[0,".repeat(limit - 1), "]".repeat(limit - 1));
-        assert_eq!(
-            jsonrepair(&format!("[{sibling},{sibling}]")).unwrap(),
-            format!("[{value},{value}]")
-        );
-        assert_eq!(
-            jsonrepair("[callback(),callback(0),new ObjectId(\"id\"),NumberLong(1,2)]").unwrap(),
-            "[null,0,\"id\",[1,2]]"
-        );
-    });
+            );
+            assert_eq!(
+                jsonrepair(&input).unwrap(),
+                format!(
+                    "{{\"x\":{}[0,0]{}}}",
+                    "[".repeat(limit - 2),
+                    "]".repeat(limit - 2)
+                )
+            );
+            let input = format!(
+                "{{x:{}callback(0,0){}}}",
+                "[".repeat(limit - 1),
+                "]".repeat(limit - 1)
+            );
+            assert_eq!(
+                jsonrepair(&input).unwrap_err().kind,
+                jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+            );
+            let sibling = format!(
+                "{}0{}",
+                "callback(0,".repeat(limit - 1),
+                ")".repeat(limit - 1)
+            );
+            let value = format!("{}0{}", "[0,".repeat(limit - 1), "]".repeat(limit - 1));
+            assert_eq!(
+                jsonrepair(&format!("[{sibling},{sibling}]")).unwrap(),
+                format!("[{value},{value}]")
+            );
+            assert_eq!(
+                jsonrepair("[callback(),callback(0),new ObjectId(\"id\"),NumberLong(1,2)]")
+                    .unwrap(),
+                "[null,0,\"id\",[1,2]]"
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
