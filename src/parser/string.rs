@@ -45,12 +45,14 @@ impl JsonRepairer {
             if !is_wrapper_argument || input.get(pos) != Some(&')') || depth != 0 {
                 return false;
             }
-            // A right parenthesis followed by string content is literal.
+            // A colon still belongs to the string; enclosing boundaries end it.
             let next = input[pos + 1..]
                 .iter()
                 .copied()
                 .find(|&ch| !chars::is_whitespace(ch) || matches!(ch, '\n' | '\r'));
-            next.map_or(true, |ch| chars::is_delimiter(ch) || ch == '#')
+            next.map_or(true, |ch| {
+                (chars::is_delimiter(ch) && ch != ':') || ch == '#'
+            })
         };
 
         loop {

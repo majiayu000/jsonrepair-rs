@@ -100,7 +100,17 @@ impl JsonRepairer {
                                 if parenthesis_depth > 0 {
                                     parenthesis_depth -= 1;
                                 } else {
-                                    wrapper_boundary = Some((self.pos, self.output.len()));
+                                    // Keep scanning when regex data follows this candidate.
+                                    let next =
+                                        self.chars[self.pos + 1..].iter().copied().find(|&ch| {
+                                            !chars::is_whitespace(ch) || matches!(ch, '\n' | '\r')
+                                        });
+                                    if next.map_or(true, |ch| {
+                                        chars::is_unquoted_string_delimiter(ch)
+                                            || matches!(ch, ')' | '#')
+                                    }) {
+                                        wrapper_boundary = Some((self.pos, self.output.len()));
+                                    }
                                 }
                             }
                             _ => {}

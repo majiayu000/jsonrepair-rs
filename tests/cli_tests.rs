@@ -846,3 +846,95 @@ fn known_wrappers_repaired_quote_and_hash_lookahead() {
         assert!(output.stderr.is_empty(), "input {input:?}: {output:?}");
     }
 }
+
+#[test]
+fn known_wrappers_quoted_punctuation_final_close() {
+    for (input, expected) in [
+        ("callback(\"foo):bar)", "\"foo):bar\""),
+        ("callback(1,\"foo):bar)", "[1,\"foo):bar\"]"),
+        ("{x:callback(1,\"foo):bar)}", "{\"x\":[1,\"foo):bar\"]}"),
+        ("[callback(1,\"foo):bar)]", "[[1,\"foo):bar\"]]"),
+        ("ObjectId(\"foo):bar)", "\"foo):bar\""),
+        ("callback(1,callback(2,\"foo):bar))", "[1,[2,\"foo):bar\"]]"),
+        ("callback(1,\"foo) :bar);", "[1,\"foo) :bar\"]"),
+        ("callback(1,\"foo):bar,a:b)", "[1,\"foo):bar\",\"a:b\"]"),
+        (
+            "{x:callback(1,\"foo):bar,a=b),y:2}",
+            "{\"x\":[1,\"foo):bar\",\"a=b\"],\"y\":2}",
+        ),
+        ("callback(1,\"foo):bar\")", "[1,\"foo):bar\"]"),
+        (
+            "callback(1,\"foo):bar)\n{\"y\":2}",
+            "[\n[1,\"foo):bar\"],\n{\"y\":2}\n]",
+        ),
+        (
+            "{x:callback(1,\"foo):bar),y:\"baz)\"}",
+            "{\"x\":[1,\"foo):bar\"],\"y\":\"baz)\"}",
+        ),
+        ("callback(\"foo) #comment )\n", "\"foo\" \n"),
+    ] {
+        let mut child = Command::new(bin())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success(), "input {input:?}: {output:?}");
+        assert_eq!(output.stdout, expected.as_bytes(), "input {input:?}");
+        assert!(output.stderr.is_empty(), "input {input:?}: {output:?}");
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap();
+    }
+}
+
+#[test]
+fn known_wrappers_incomplete_regex_final_close() {
+    for (input, expected) in [
+        ("callback(/foo)bar)", "\"/foo)bar/\""),
+        ("callback(1,/foo)bar)", "[1,\"/foo)bar/\"]"),
+        ("{x:callback(1,/foo)bar)}", "{\"x\":[1,\"/foo)bar/\"]}"),
+        ("[callback(1,/foo)bar)]", "[[1,\"/foo)bar/\"]]"),
+        ("ObjectId(/foo)bar)", "\"/foo)bar/\""),
+        ("callback(/foo):bar)", "\"/foo):bar/\""),
+        ("callback(/foo)bar)baz)", "\"/foo)bar)baz/\""),
+        ("callback(1,callback(2,/foo)bar))", "[1,[2,\"/foo)bar/\"]]"),
+        ("callback(callback(/foo),2)", "[\"/foo/\",2]"),
+        ("callback(/foo)bar(baz))", "\"/foo)bar(baz)/\""),
+        ("callback(/foo)bar[()])", "\"/foo)bar[()]/\""),
+        ("callback(/foo)bar\\))", "\"/foo)bar\\\\)/\""),
+        ("callback(/foo) #comment )\n", "\"/foo/\" \n"),
+        (
+            "callback(1,/foo)bar)\n{\"y\":2}",
+            "[\n[1,\"/foo)bar/\"],\n{\"y\":2}\n]",
+        ),
+        ("callback(/foo)bar/i)", "\"/foo)bar/i\""),
+        (
+            "{x:callback(/foo)bar),y:\"baz)\"}",
+            "{\"x\":\"/foo)bar/\",\"y\":\"baz)\"}",
+        ),
+    ] {
+        let mut child = Command::new(bin())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success(), "input {input:?}: {output:?}");
+        assert_eq!(output.stdout, expected.as_bytes(), "input {input:?}");
+        assert!(output.stderr.is_empty(), "input {input:?}: {output:?}");
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap();
+    }
+}
