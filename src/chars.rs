@@ -96,6 +96,7 @@ pub fn is_url_char(c: char) -> bool {
                 | '+'
                 | ';'
                 | '='
+                | '%'
         )
 }
 

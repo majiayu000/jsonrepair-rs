@@ -54,6 +54,7 @@ impl JsonRepairer {
                 (chars::is_delimiter(ch) && ch != ':') || ch == '#'
             })
         };
+        let mut url_followed_by_content = false;
 
         loop {
             if self.at_end() {
@@ -132,14 +133,41 @@ impl JsonRepairer {
             } else if stop_at_delimiter
                 && (chars::is_unquoted_string_delimiter(c)
                     || is_wrapper_close(&self.chars, self.pos, parenthesis_depth))
+                && !(c == '/'
+                    && url_followed_by_content
+                    && !matches!(self.peek_at(self.pos + 1), Some('/' | '*')))
             {
-                // URL like "https://..." should not stop at '/'.
+                // Keep a URL on the next line inside the truncated string.
+                if c == '\n' {
+                    let mut next_start = self.pos + 1;
+                    while self
+                        .peek_at(next_start)
+                        .is_some_and(|ch| matches!(ch, ' ' | '\t' | '\r'))
+                    {
+                        next_start += 1;
+                    }
+                    let mut slash_idx = next_start;
+                    while self
+                        .peek_at(slash_idx)
+                        .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == ':')
+                    {
+                        slash_idx += 1;
+                    }
+                    if self.looks_like_url_start(next_start, slash_idx)
+                        || (self.peek_at(slash_idx) == Some('/')
+                            && slash_idx + 1 == self.chars.len()
+                            && self.ends_with_url_scheme(next_start, slash_idx))
+                    {
+                        self.parse_string_char(c)?;
+                        continue;
+                    }
+                }
+
+                // URL schemes can follow prose as well as start the string.
                 if c == '/'
                     && self.pos > input_start + 1
                     && self.peek_at(self.pos - 1) == Some(':')
-                    && (self.looks_like_url_start(input_start + 1, self.pos)
-                        || (self.pos + 1 == self.chars.len()
-                            && self.ends_with_url_scheme(input_start + 1, self.pos)))
+                    && self.ends_with_url_scheme(input_start + 1, self.pos)
                 {
                     while self.peek().is_some_and(chars::is_url_char) {
                         let url_char = self.chars[self.pos];
@@ -153,6 +181,14 @@ impl JsonRepairer {
                         }
                         self.output.push(self.chars[self.pos]);
                         self.pos += 1;
+                    }
+                    if self
+                        .peek()
+                        .is_some_and(|ch| !chars::is_unquoted_string_delimiter(ch))
+                    {
+                        // Later slashes belong to the continuing quoted content.
+                        url_followed_by_content = true;
+                        continue;
                     }
                 }
 
@@ -342,7 +378,10 @@ impl JsonRepairer {
                 self.output.truncate(idx);
             }
             let second_start = self.output.len();
-            if self.parse_string(is_wrapper_argument)? {
+            self.enter_container()?;
+            let parsed = self.parse_string(is_wrapper_argument)?;
+            self.leave_container();
+            if parsed {
                 // Remove start quote from second string.
                 if second_start < self.output.len() {
                     self.output.remove(second_start);

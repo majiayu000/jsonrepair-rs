@@ -2,7 +2,7 @@ use jsonrepair_rs::jsonrepair;
 
 // ── Helpers ──────────────────────────────────────────────────
 
-const DEEP_STACK_TEST_STACK_SIZE: usize = 16 * 1024 * 1024;
+const DEFAULT_STACK_TEST_STACK_SIZE: usize = 2 * 1024 * 1024;
 
 fn ok(input: &str, expected: &str) {
     let result = jsonrepair(input).unwrap_or_else(|e| panic!("repair failed for {input:?}: {e}"));
@@ -25,19 +25,40 @@ fn err_exact(input: &str, message: &str, position: usize) {
     assert!(err.column > 0, "expected column info for {input:?}");
 }
 
-fn run_with_large_stack<F>(f: F)
+fn run_with_default_stack<F>(f: F)
 where
     F: FnOnce() + Send + 'static,
 {
     let handle = std::thread::Builder::new()
-        .name("deep-stack-regression".to_string())
-        .stack_size(DEEP_STACK_TEST_STACK_SIZE)
+        .name("default-stack-regression".to_string())
+        .stack_size(DEFAULT_STACK_TEST_STACK_SIZE)
         .spawn(f)
-        .unwrap_or_else(|e| panic!("failed to spawn deep-stack test thread: {e}"));
+        .unwrap_or_else(|e| panic!("failed to spawn default-stack test thread: {e}"));
 
     if let Err(payload) = handle.join() {
         std::panic::resume_unwind(payload);
     }
+}
+
+fn run_depth_regression(name: &str, f: impl FnOnce() + Send + 'static) {
+    const CHILD_TEST: &str = "JSONREPAIR_DEPTH_SUBPROCESS";
+    if std::env::var(CHILD_TEST).as_deref() == Ok(name) {
+        run_with_default_stack(f);
+        return;
+    }
+
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", name, "--nocapture"])
+        .env(CHILD_TEST, name)
+        .output()
+        .expect("run depth regression subprocess");
+    assert!(
+        output.status.success(),
+        "depth regression exited with {}\nstdout: {}\nstderr: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
 }
 
 // ── 1. Valid JSON (pass-through, whitespace preserved) ───────
@@ -851,6 +872,170 @@ fn url_with_missing_end_quote() {
         r#"["https://www.bible.com/,2]"#,
         r#"["https://www.bible.com/",2]"#,
     );
+}
+
+#[test]
+fn truncated_url_after_text_preserves_path() {
+    for (input, expected) in [
+        (
+            r#""see https://example.com/foo/"#,
+            r#""see https://example.com/foo/""#,
+        ),
+        (
+            r#"{"content":"see https://example.com/foo/"#,
+            r#"{"content":"see https://example.com/foo/"}"#,
+        ),
+        (
+            r#"{"content":"see https://example.com/foo}"#,
+            r#"{"content":"see https://example.com/foo"}"#,
+        ),
+        (
+            r#"["see https://example.com/foo/,1]"#,
+            r#"["see https://example.com/foo/",1]"#,
+        ),
+        (
+            r#"{"content":"see https://example.com/a%20b/}"#,
+            r#"{"content":"see https://example.com/a%20b/"}"#,
+        ),
+    ] {
+        ok(input, expected);
+    }
+    for scheme in ["http", "https", "ftp", "mailto", "file", "data", "irc"] {
+        ok(
+            &format!("\"see {scheme}://example.com/foo/"),
+            &format!("\"see {scheme}://example.com/foo/\""),
+        );
+    }
+}
+
+#[test]
+fn truncated_url_with_following_prose() {
+    for (input, expected) in [
+        (
+            r#"{"content":"see https://example.com/foo and/or more}"#,
+            r#"{"content":"see https://example.com/foo and/or more"}"#,
+        ),
+        (
+            r#"["see https://example.com/a%20b and/or more,1]"#,
+            r#"["see https://example.com/a%20b and/or more",1]"#,
+        ),
+        (
+            "{\"content\":\"# Heading\nhttps://example.com/foo and/or more}",
+            r##"{"content":"# Heading\nhttps://example.com/foo and/or more"}"##,
+        ),
+        (
+            r#"{"content":"see https://example.com/foo and/or more/"#,
+            r#"{"content":"see https://example.com/foo and/or more/"}"#,
+        ),
+        (
+            r#"{"content":"see https://example.com/foo and/or more"/* comment */}"#,
+            r#"{"content":"see https://example.com/foo and/or more"}"#,
+        ),
+        (
+            r#"{"content":"see https://example.com/foo and more}"#,
+            r#"{"content":"see https://example.com/foo and more"}"#,
+        ),
+        (
+            r#"["see https://example.com/a%20b and more,1]"#,
+            r#"["see https://example.com/a%20b and more",1]"#,
+        ),
+        (
+            "{\"content\":\"# Heading\nhttps://example.com/foo and more}",
+            r##"{"content":"# Heading\nhttps://example.com/foo and more"}"##,
+        ),
+        (
+            r#"{"content":"see https://example.com/foo and https://example.org/bar}"#,
+            r#"{"content":"see https://example.com/foo and https://example.org/bar"}"#,
+        ),
+        (
+            r#"{"content":"see https://example.com/foo and more"}"#,
+            r#"{"content":"see https://example.com/foo and more"}"#,
+        ),
+        (
+            r#"{"content":"see https://example.com/foo   }"#,
+            r#"{"content":"see https://example.com/foo"   }"#,
+        ),
+    ] {
+        ok(input, expected);
+    }
+}
+
+#[test]
+fn truncated_url_prose_before_comments() {
+    for (input, expected) in [
+        (
+            r#"{"content":"see https://example.com/foo and more/* trailing */}"#,
+            r#"{"content":"see https://example.com/foo and more"}"#,
+        ),
+        (
+            r#"["see https://example.com/foo and/or more /* trailing */,1]"#,
+            r#"["see https://example.com/foo and/or more" ,1]"#,
+        ),
+        (
+            "{\"content\":\"see https://example.com/foo and/or more// trailing\n}",
+            "{\"content\":\"see https://example.com/foo and/or more\"\n}",
+        ),
+        (
+            "[\"see https://example.com/a%20b and more // trailing\n,1]",
+            "[\"see https://example.com/a%20b and more\" \n,1]",
+        ),
+        (
+            r#"{"content":"see https://example.com/foo and more/* trailing */"}"#,
+            r#"{"content":"see https://example.com/foo and more/* trailing */"}"#,
+        ),
+        (
+            r#"{"content":"see https://example.com/foo and more// trailing"}"#,
+            r#"{"content":"see https://example.com/foo and more// trailing"}"#,
+        ),
+    ] {
+        ok(input, expected);
+    }
+}
+
+#[test]
+fn truncated_url_after_real_newline_preserves_content() {
+    ok(
+        r##"{"content":"# Heading\nhttps://example.com/foo}"##,
+        r##"{"content":"# Heading\nhttps://example.com/foo"}"##,
+    );
+    for prefix in ["# Heading\n", "# Heading\n  ", "# Heading\r\n"] {
+        let content = format!("{prefix}https://example.com/foo");
+        let quoted = serde_json::to_string(&content).unwrap();
+        ok(
+            &format!("{{\"content\":\"{content}}}"),
+            &format!("{{\"content\":{quoted}}}"),
+        );
+        let content = format!("{prefix}https:/");
+        let quoted = serde_json::to_string(&content).unwrap();
+        ok(
+            &format!("{{\"content\":\"{content}"),
+            &format!("{{\"content\":{quoted}}}"),
+        );
+    }
+}
+
+#[test]
+fn unquoted_percent_encoded_url_remains_one_value() {
+    for (input, expected) in [
+        (
+            "[https://example.com/a%20b,1]",
+            r#"["https://example.com/a%20b",1]"#,
+        ),
+        (
+            "[https://example.com/a%20b]",
+            r#"["https://example.com/a%20b"]"#,
+        ),
+        (
+            "{url:https://example.com/a%20b/}",
+            r#"{"url":"https://example.com/a%20b/"}"#,
+        ),
+        (
+            r#"{"a":"see https://example.com/a%20b/c"}"#,
+            r#"{"a":"see https://example.com/a%20b/c"}"#,
+        ),
+    ] {
+        ok(input, expected);
+    }
 }
 
 #[test]
@@ -1775,9 +1960,129 @@ fn unquoted_string_pass_through_quoted() {
 // ── 53. Depth limit ──────────────────────────────────────────────
 
 #[test]
+fn repair_rejects_objectid_recursion_on_default_stack() {
+    run_depth_regression("repair_rejects_objectid_recursion_on_default_stack", || {
+        let input = format!("{}\"id\"{}", "ObjectId(".repeat(400), ")".repeat(400));
+        let error = jsonrepair(&input).unwrap_err();
+        assert_eq!(
+            error.kind,
+            jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+        );
+    });
+}
+
+#[test]
+fn repair_rejects_callback_recursion_on_default_stack() {
+    run_depth_regression("repair_rejects_callback_recursion_on_default_stack", || {
+        let input = format!("{}null{}", "callback(".repeat(400), ")".repeat(400));
+        let error = jsonrepair(&input).unwrap_err();
+        assert_eq!(
+            error.kind,
+            jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+        );
+    });
+}
+
+#[test]
+fn repair_rejects_concatenation_recursion_on_default_stack() {
+    run_depth_regression(
+        "repair_rejects_concatenation_recursion_on_default_stack",
+        || {
+            let input = vec!["\"a\""; 1200].join("+");
+            let error = jsonrepair(&input).unwrap_err();
+            assert_eq!(
+                error.kind,
+                jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+            );
+        },
+    );
+}
+
+#[test]
+fn repair_rejects_array_recursion_on_default_stack() {
+    run_depth_regression("repair_rejects_array_recursion_on_default_stack", || {
+        for input in [
+            "[".repeat(513),
+            format!("{}{}", "[".repeat(513), "]".repeat(513)),
+        ] {
+            let error = jsonrepair(&input).unwrap_err();
+            assert_eq!(
+                error.kind,
+                jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+            );
+        }
+    });
+}
+
+#[test]
+fn repair_rejects_object_recursion_on_default_stack() {
+    run_depth_regression("repair_rejects_object_recursion_on_default_stack", || {
+        let input = format!("{}null{}", "{\"a\":".repeat(513), "}".repeat(513));
+        let error = jsonrepair(&input).unwrap_err();
+        assert_eq!(
+            error.kind,
+            jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+        );
+    });
+}
+
+#[test]
+fn repair_rejects_fence_recursion_on_default_stack() {
+    run_depth_regression("repair_rejects_fence_recursion_on_default_stack", || {
+        let input = format!("[{}null]", "```json\n".repeat(513));
+        let error = jsonrepair(&input).unwrap_err();
+        assert_eq!(
+            error.kind,
+            jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+        );
+    });
+}
+
+#[test]
+fn repair_observes_shared_depth_budget_on_default_stack() {
+    run_depth_regression(
+        "repair_observes_shared_depth_budget_on_default_stack",
+        || {
+            for wrapper in ["ObjectId(", "callback(", "new ObjectId(", "NumberLong("] {
+                let input = format!("{}null{}", wrapper.repeat(128), ")".repeat(128));
+                ok(&input, "null");
+                let input = format!("{}null{}", wrapper.repeat(129), ")".repeat(129));
+                let error = jsonrepair(&input).unwrap_err();
+                assert_eq!(
+                    error.kind,
+                    jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+                );
+            }
+
+            let input = format!("{}null{}", "{\"a\":".repeat(128), "}".repeat(128));
+            ok(&input, &input);
+            let input = vec!["\"a\""; 129].join("+");
+            ok(&input, &format!("\"{}\"", "a".repeat(129)));
+
+            let prefix = format!("{}{}", "[".repeat(63), "ObjectId(".repeat(64));
+            let suffix = format!("{}{}", ")".repeat(64), "]".repeat(63));
+            let input = format!("{prefix}\"a\"+\"b\"{suffix}");
+            let expected = format!("{}\"ab\"{}", "[".repeat(63), "]".repeat(63));
+            ok(&input, &expected);
+            let input = format!("{prefix}\"a\"+\"b\"+\"c\"{suffix}");
+            let error = jsonrepair(&input).unwrap_err();
+            assert_eq!(
+                error.kind,
+                jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+            );
+
+            let value = format!("{}null{}", "ObjectId(".repeat(127), ")".repeat(127));
+            ok(&format!("[{value},{value}]"), "[null,null]");
+            let input = format!("[{}null]", "```json\n".repeat(127));
+            assert!(jsonrepair(&input).is_ok());
+        },
+    );
+}
+
+#[test]
 fn repair_rejects_deeply_nested_input() {
-    run_with_large_stack(|| {
-        let depth = 513;
+    run_with_default_stack(|| {
+        let depth = 129;
         let input = "[".repeat(depth);
         let result = jsonrepair(&input);
         assert!(result.is_err());
@@ -1796,8 +2101,8 @@ fn repair_rejects_deeply_nested_input() {
 
 #[test]
 fn repair_accepts_max_depth_nesting() {
-    run_with_large_stack(|| {
-        let depth = 512;
+    run_with_default_stack(|| {
+        let depth = 128;
         let input = "[".repeat(depth) + &"]".repeat(depth);
         assert!(jsonrepair(&input).is_ok());
     });
@@ -1879,7 +2184,7 @@ fn error_includes_kind() {
 
 #[test]
 fn large_deeply_nested_truncated_array_repairs_below_limit() {
-    run_with_large_stack(|| {
+    run_with_default_stack(|| {
         let depth = 128;
         let input = format!("{}true", "[".repeat(depth));
         let expected = format!("{}true{}", "[".repeat(depth), "]".repeat(depth));

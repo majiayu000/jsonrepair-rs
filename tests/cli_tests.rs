@@ -48,6 +48,62 @@ fn repairs_stdin_to_stdout() {
 }
 
 #[test]
+fn repairs_url_with_following_prose() {
+    for (input, expected) in [
+        (
+            &br#"{"content":"see https://example.com/foo and/or more}"#[..],
+            &br#"{"content":"see https://example.com/foo and/or more"}"#[..],
+        ),
+        (
+            &br#"{"content":"see https://example.com/foo and more}"#[..],
+            &br#"{"content":"see https://example.com/foo and more"}"#[..],
+        ),
+    ] {
+        let mut child = Command::new(bin())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child.stdin.as_mut().unwrap().write_all(input).unwrap();
+
+        let output = child.wait_with_output().unwrap();
+
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(output.stdout, expected);
+        assert!(output.stderr.is_empty(), "{output:?}");
+    }
+}
+
+#[test]
+fn repairs_url_prose_before_comments() {
+    for (input, expected) in [
+        (
+            &br#"{"content":"see https://example.com/foo and/or more/* trailing */}"#[..],
+            &br#"{"content":"see https://example.com/foo and/or more"}"#[..],
+        ),
+        (
+            &b"{\"content\":\"see https://example.com/foo and more// trailing\n}"[..],
+            &b"{\"content\":\"see https://example.com/foo and more\"\n}"[..],
+        ),
+    ] {
+        let mut child = Command::new(bin())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child.stdin.as_mut().unwrap().write_all(input).unwrap();
+
+        let output = child.wait_with_output().unwrap();
+
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(output.stdout, expected);
+        assert!(output.stderr.is_empty(), "{output:?}");
+    }
+}
+
+#[test]
 fn known_wrappers_multiple_arguments_and_errors() {
     for (input, expected) in [
         (r#"callback({"a":1},2)"#, Some(r#"[{"a":1},2]"#)),
