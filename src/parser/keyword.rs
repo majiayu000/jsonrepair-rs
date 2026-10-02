@@ -6,7 +6,7 @@ use super::Result;
 impl JsonRepairer {
     /// Parse JSON/Python/JS keywords or fall back to unquoted string.
     /// Compares directly on char slice without allocating.
-    pub(super) fn parse_keyword_or_unquoted(&mut self) -> Result<bool> {
+    pub(super) fn parse_keyword_or_unquoted(&mut self, is_wrapper_argument: bool) -> Result<bool> {
         let start = self.pos;
         if !self.peek().is_some_and(chars::is_identifier_start) {
             return Ok(false);
@@ -19,7 +19,7 @@ impl JsonRepairer {
             Some(value) => value,
             None => {
                 self.pos = start;
-                return self.parse_unquoted_string(false);
+                return self.parse_unquoted_string(false, is_wrapper_argument);
             }
         };
 

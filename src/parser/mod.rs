@@ -23,6 +23,7 @@ pub struct JsonRepairer {
     pub(super) pos: usize,
     pub(super) output: String,
     pub(super) depth: usize,
+    pub(super) in_object: bool,
 }
 
 impl JsonRepairer {
@@ -33,11 +34,13 @@ impl JsonRepairer {
             pos: 0,
             output: String::with_capacity(input.len()),
             depth: 0,
+            in_object: false,
         }
     }
 
     // repair() and parse_ndjson() are in toplevel.rs
-    pub(super) fn parse_value(&mut self) -> Result<bool> {
+    // The closing-parenthesis boundary applies only to a direct wrapper argument.
+    pub(super) fn parse_value(&mut self, is_wrapper_argument: bool) -> Result<bool> {
         self.parse_whitespace_and_comments();
         let c = self.peek();
         macro_rules! finish {
@@ -49,10 +52,10 @@ impl JsonRepairer {
         }
 
         if c == Some('{') {
-            finish!(self.parse_object()?);
+            finish!(self.parse_object(is_wrapper_argument)?);
         }
         if c == Some('[') {
-            finish!(self.parse_array()?);
+            finish!(self.parse_array(is_wrapper_argument)?);
         }
         if c == Some('`') && self.matches_at(self.pos, "```") {
             finish!(self.parse_markdown_fenced()?);
@@ -60,7 +63,7 @@ impl JsonRepairer {
         if c.is_some_and(chars::is_quote)
             || (c == Some('\\') && self.peek_at(self.pos + 1).is_some_and(chars::is_quote))
         {
-            finish!(self.parse_string()?);
+            finish!(self.parse_string(is_wrapper_argument)?);
         }
         if c == Some('+') && self.parse_plus_number()? {
             finish!(true);
@@ -74,22 +77,24 @@ impl JsonRepairer {
         {
             finish!(true);
         }
-        if c.is_some_and(chars::is_identifier_start) && self.parse_keyword_or_unquoted()? {
+        if c.is_some_and(chars::is_identifier_start)
+            && self.parse_keyword_or_unquoted(is_wrapper_argument)?
+        {
             finish!(true);
         }
-        if self.parse_unquoted_string(false)? {
+        if self.parse_unquoted_string(false, is_wrapper_argument)? {
             finish!(true);
         }
         if c == Some('/') {
-            finish!(self.parse_slash()?);
+            finish!(self.parse_slash(is_wrapper_argument)?);
         }
 
         self.parse_whitespace_and_comments();
         Ok(false)
     }
 
-    fn parse_slash(&mut self) -> Result<bool> {
-        self.parse_regex_as_string()
+    fn parse_slash(&mut self, is_wrapper_argument: bool) -> Result<bool> {
+        self.parse_regex_as_string(is_wrapper_argument)
     }
 
     // ── Depth tracking ────────────────────────────────────

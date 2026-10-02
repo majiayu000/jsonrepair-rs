@@ -5,12 +5,14 @@ use super::JsonRepairer;
 use super::Result;
 
 impl JsonRepairer {
-    pub(super) fn parse_object(&mut self) -> Result<bool> {
+    pub(super) fn parse_object(&mut self, is_wrapper_argument: bool) -> Result<bool> {
         if self.peek() != Some('{') {
             return Ok(false);
         }
 
         self.enter_container()?;
+        let was_in_object = self.in_object;
+        self.in_object = true;
         self.output.push('{');
         let frame_start = self.output.len();
         self.pos += 1;
@@ -22,7 +24,10 @@ impl JsonRepairer {
         }
 
         let mut initial = true;
-        while !self.at_end() && self.peek() != Some('}') {
+        while !self.at_end()
+            && self.peek() != Some('}')
+            && !(is_wrapper_argument && self.peek() == Some(')'))
+        {
             if !initial {
                 let processed_comma = self.parse_char(',');
                 if !processed_comma {
@@ -30,6 +35,10 @@ impl JsonRepairer {
                     self.insert_before_last_whitespace(",");
                 }
                 self.parse_whitespace_and_comments();
+                if is_wrapper_argument && self.peek() == Some(')') {
+                    self.strip_trailing_comma(frame_start);
+                    break;
+                }
             } else {
                 initial = false;
             }
@@ -78,7 +87,7 @@ impl JsonRepairer {
                 }
             }
 
-            let processed_value = self.parse_value()?;
+            let processed_value = self.parse_value(false)?;
             if !processed_value {
                 if processed_colon || truncated {
                     // Missing object value.
@@ -100,14 +109,15 @@ impl JsonRepairer {
         }
 
         self.leave_container();
+        self.in_object = was_in_object;
         Ok(true)
     }
 
     fn parse_object_key(&mut self) -> Result<bool> {
-        if self.parse_string()? {
+        if self.parse_string(false)? {
             return Ok(true);
         }
-        self.parse_unquoted_string(true)
+        self.parse_unquoted_string(true, false)
     }
 
     /// Parse and skip `...` (ellipsis), returning true if found.

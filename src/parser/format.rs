@@ -23,7 +23,7 @@ impl JsonRepairer {
 
         self.parse_whitespace_and_comments();
 
-        let processed_value = self.parse_value()?;
+        let processed_value = self.parse_value(false)?;
         if !processed_value {
             self.leave_container();
             return Ok(false);
@@ -69,7 +69,7 @@ impl JsonRepairer {
         false
     }
 
-    pub(super) fn parse_regex_as_string(&mut self) -> Result<bool> {
+    pub(super) fn parse_regex_as_string(&mut self, is_wrapper_argument: bool) -> Result<bool> {
         if self.peek() != Some('/') {
             return Ok(false);
         }
@@ -77,15 +77,48 @@ impl JsonRepairer {
         self.output.push('"');
         self.output.push('/');
         let mut escaped = false;
+        let mut parenthesis_depth = 0usize;
+        let mut in_character_class = false;
+        let mut wrapper_boundary = None;
 
         loop {
             match self.peek() {
                 None | Some('\n') | Some('\r') => {
+                    if let Some((input_end, output_end)) = wrapper_boundary {
+                        // Only a missing slash permits repairing before the wrapper close.
+                        self.pos = input_end;
+                        self.output.truncate(output_end);
+                    }
                     self.output.push('/');
                     self.output.push('"');
                     return Ok(true);
                 }
                 Some(c) => {
+                    if is_wrapper_argument && !escaped && wrapper_boundary.is_none() {
+                        match c {
+                            '[' => in_character_class = true,
+                            ']' => in_character_class = false,
+                            '(' if !in_character_class => parenthesis_depth += 1,
+                            ')' if !in_character_class => {
+                                if parenthesis_depth > 0 {
+                                    parenthesis_depth -= 1;
+                                } else {
+                                    // Keep scanning when regex data follows this candidate.
+                                    let next =
+                                        self.chars[self.pos + 1..].iter().copied().find(|&ch| {
+                                            !chars::is_whitespace(ch) || matches!(ch, '\n' | '\r')
+                                        });
+                                    if next.map_or(true, |ch| {
+                                        chars::is_unquoted_string_delimiter(ch)
+                                            || matches!(ch, ')' | '#')
+                                    }) {
+                                        wrapper_boundary = Some((self.pos, self.output.len()));
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
                     self.pos += 1;
                     if c == '/' && !escaped {
                         self.output.push('/');

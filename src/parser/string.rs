@@ -6,14 +6,15 @@ use super::Result;
 
 impl JsonRepairer {
     /// Parse a quoted string value.
-    pub(super) fn parse_string(&mut self) -> Result<bool> {
-        self.parse_string_internal(false, None)
+    pub(super) fn parse_string(&mut self, is_wrapper_argument: bool) -> Result<bool> {
+        self.parse_string_internal(false, None, is_wrapper_argument)
     }
 
     fn parse_string_internal(
         &mut self,
         stop_at_delimiter: bool,
         stop_at_index: Option<usize>,
+        is_wrapper_argument: bool,
     ) -> Result<bool> {
         let skip_escape_chars = self.peek() == Some('\\');
         if skip_escape_chars {
@@ -39,6 +40,20 @@ impl JsonRepairer {
         let output_start = self.output.len();
         self.output.push('"');
         self.pos += 1;
+        let mut parenthesis_depth = 0usize;
+        let is_wrapper_close = |input: &[char], pos: usize, depth: usize| {
+            if !is_wrapper_argument || input.get(pos) != Some(&')') || depth != 0 {
+                return false;
+            }
+            // A colon still belongs to the string; enclosing boundaries end it.
+            let next = input[pos + 1..]
+                .iter()
+                .copied()
+                .find(|&ch| !chars::is_whitespace(ch) || matches!(ch, '\n' | '\r'));
+            next.map_or(true, |ch| {
+                (chars::is_delimiter(ch) && ch != ':') || ch == '#'
+            })
+        };
         let mut url_followed_by_content = false;
 
         loop {
@@ -53,7 +68,7 @@ impl JsonRepairer {
                     // Retry in conservative mode when we ended after a delimiter.
                     self.pos = input_start;
                     self.output.truncate(output_start);
-                    return self.parse_string_internal(true, None);
+                    return self.parse_string_internal(true, None, is_wrapper_argument);
                 }
 
                 self.insert_before_last_output_whitespace(output_start + 1, "\"");
@@ -88,7 +103,7 @@ impl JsonRepairer {
                         chars::is_delimiter(ch) || chars::is_quote(ch) || chars::is_digit(ch)
                     })
                 {
-                    self.parse_concatenated_string()?;
+                    self.parse_concatenated_string(is_wrapper_argument)?;
                     return Ok(true);
                 }
 
@@ -101,14 +116,14 @@ impl JsonRepairer {
                     // {"a":"b,c,"d":"e"} -> stop at comma before quote.
                     self.pos = input_start;
                     self.output.truncate(output_start);
-                    return self.parse_string_internal(false, prev_non_ws);
+                    return self.parse_string_internal(false, prev_non_ws, is_wrapper_argument);
                 }
 
                 if prev_char.is_some_and(chars::is_delimiter) {
                     // End quote likely missing earlier.
                     self.pos = input_start;
                     self.output.truncate(output_start);
-                    return self.parse_string_internal(true, None);
+                    return self.parse_string_internal(true, None, is_wrapper_argument);
                 }
 
                 // Not a real closing quote: continue, escaping this quote.
@@ -116,7 +131,8 @@ impl JsonRepairer {
                 self.output.push_str("\\\"");
                 self.pos = quote_pos + 1;
             } else if stop_at_delimiter
-                && chars::is_unquoted_string_delimiter(c)
+                && (chars::is_unquoted_string_delimiter(c)
+                    || is_wrapper_close(&self.chars, self.pos, parenthesis_depth))
                 && !(c == '/'
                     && url_followed_by_content
                     && !matches!(self.peek_at(self.pos + 1), Some('/' | '*')))
@@ -154,6 +170,15 @@ impl JsonRepairer {
                     && self.ends_with_url_scheme(input_start + 1, self.pos)
                 {
                     while self.peek().is_some_and(chars::is_url_char) {
+                        let url_char = self.chars[self.pos];
+                        if is_wrapper_close(&self.chars, self.pos, parenthesis_depth) {
+                            break;
+                        }
+                        if url_char == '(' {
+                            parenthesis_depth += 1;
+                        } else if url_char == ')' {
+                            parenthesis_depth = parenthesis_depth.saturating_sub(1);
+                        }
                         self.output.push(self.chars[self.pos]);
                         self.pos += 1;
                     }
@@ -168,11 +193,16 @@ impl JsonRepairer {
                 }
 
                 self.insert_before_last_output_whitespace(output_start + 1, "\"");
-                self.parse_concatenated_string()?;
+                self.parse_concatenated_string(is_wrapper_argument)?;
                 return Ok(true);
             } else if c == '\\' {
                 self.parse_string_escape()?;
             } else {
+                if c == '(' {
+                    parenthesis_depth += 1;
+                } else if c == ')' {
+                    parenthesis_depth = parenthesis_depth.saturating_sub(1);
+                }
                 self.parse_string_char(c)?;
             }
 
@@ -334,7 +364,7 @@ impl JsonRepairer {
         Ok(())
     }
 
-    fn parse_concatenated_string(&mut self) -> Result<bool> {
+    fn parse_concatenated_string(&mut self, is_wrapper_argument: bool) -> Result<bool> {
         let mut processed = false;
 
         self.parse_whitespace_and_comments();
@@ -349,7 +379,7 @@ impl JsonRepairer {
             }
             let second_start = self.output.len();
             self.enter_container()?;
-            let parsed = self.parse_string()?;
+            let parsed = self.parse_string(is_wrapper_argument)?;
             self.leave_container();
             if parsed {
                 // Remove start quote from second string.
@@ -366,7 +396,11 @@ impl JsonRepairer {
     }
 
     /// Parse unquoted string values and function-call wrappers (MongoDB/JSONP).
-    pub(super) fn parse_unquoted_string(&mut self, is_key: bool) -> Result<bool> {
+    pub(super) fn parse_unquoted_string(
+        &mut self,
+        is_key: bool,
+        is_wrapper_argument: bool,
+    ) -> Result<bool> {
         let start = self.pos;
 
         if !is_key
@@ -394,7 +428,8 @@ impl JsonRepairer {
             if parenthesis_depth == 0
                 && (chars::is_unquoted_string_delimiter(c)
                     || chars::is_quote(c)
-                    || (is_key && c == ':'))
+                    || (is_key && matches!(c, ':' | '='))
+                    || (is_wrapper_argument && c == ')'))
             {
                 break;
             }
@@ -405,7 +440,15 @@ impl JsonRepairer {
             && self.peek_at(self.pos.saturating_sub(1)) == Some(':')
             && self.looks_like_url_start(start, self.pos)
         {
-            while self.peek().is_some_and(chars::is_url_char) {
+            while let Some(c) = self.peek().filter(|&c| chars::is_url_char(c)) {
+                if is_wrapper_argument && c == ')' && parenthesis_depth == 0 {
+                    break;
+                }
+                if c == '(' {
+                    parenthesis_depth += 1;
+                } else if c == ')' {
+                    parenthesis_depth = parenthesis_depth.saturating_sub(1);
+                }
                 self.pos += 1;
             }
         }
@@ -534,13 +577,68 @@ impl JsonRepairer {
 
         self.enter_container()?;
         self.pos = cursor + 1;
+        let output_start = self.output.len();
         self.parse_whitespace_and_comments();
-        if self.peek() == Some(')') {
+        let value_parsed = if self.peek() == Some(')') {
             self.output.push_str("null");
+            true
         } else {
-            let value_parsed = self.parse_value()?;
+            let value_parsed = self.parse_value(true)?;
             if !value_parsed {
                 self.output.push_str("null");
+            }
+            value_parsed
+        };
+
+        if self.peek() == Some(',') {
+            // Property recovery applies only when the wrapper close is missing.
+            let closed_wrapper = self.in_object && self.wrapper_has_closing_parenthesis(cursor)?;
+            let mut multiple_arguments = false;
+            while self.peek() == Some(',')
+                && (closed_wrapper || !self.comma_starts_object_property()?)
+            {
+                if !value_parsed {
+                    return Err(self.error_char_kind(
+                        "Unexpected character",
+                        JsonRepairErrorKind::UnexpectedCharacter,
+                    ));
+                }
+                if !multiple_arguments {
+                    self.output.insert(output_start, '[');
+                    multiple_arguments = true;
+                }
+                self.parse_char(',');
+                self.parse_whitespace_and_comments();
+                if self.at_end() {
+                    return Err(self.error_kind(
+                        "Unexpected end of json string",
+                        JsonRepairErrorKind::UnexpectedEnd,
+                    ));
+                }
+                if self.peek() == Some(')') || !self.parse_value(true)? {
+                    return Err(self.error_char_kind(
+                        "Unexpected character",
+                        JsonRepairErrorKind::UnexpectedCharacter,
+                    ));
+                }
+            }
+            if multiple_arguments {
+                let ndjson_boundary = self.peek().is_some_and(chars::is_start_of_value)
+                    && self.output_ends_with_comma_or_newline();
+                if !matches!(self.peek(), Some(',' | ')' | '}' | ']'))
+                    && !self.at_end()
+                    && !ndjson_boundary
+                {
+                    return Err(self.error_char_kind(
+                        "Unexpected character",
+                        JsonRepairErrorKind::UnexpectedCharacter,
+                    ));
+                }
+                if ndjson_boundary {
+                    self.insert_before_last_whitespace("]");
+                } else {
+                    self.output.push(']');
+                }
             }
         }
 
@@ -553,6 +651,150 @@ impl JsonRepairer {
 
         self.leave_container();
         Ok(true)
+    }
+
+    fn wrapper_has_closing_parenthesis(&mut self, start: usize) -> Result<bool> {
+        let mut cursor = start + 1;
+        let mut parentheses = 1usize;
+        let mut containers = 0usize;
+        let mut in_url = false;
+        while let Some(c) = self.peek_at(cursor) {
+            if in_url && !chars::is_url_char(c) {
+                in_url = false;
+            }
+            if c == '/'
+                && self.peek_at(cursor.saturating_sub(1)) == Some(':')
+                && self.ends_with_url_scheme(start + 1, cursor)
+            {
+                in_url = true;
+            }
+            if !in_url && (chars::is_quote(c) || chars::is_identifier_start(c)) {
+                if chars::is_identifier_start(c) {
+                    let mut name_end = cursor;
+                    while self
+                        .peek_at(name_end)
+                        .is_some_and(chars::is_identifier_char)
+                    {
+                        name_end += 1;
+                    }
+                    let mut after_name = name_end;
+                    while self.peek_at(after_name).is_some_and(chars::is_whitespace) {
+                        after_name += 1;
+                    }
+                    // Leave actual wrapper parentheses to the structural scan.
+                    if self.slice_eq_ignore_ascii_case(cursor, name_end, "new")
+                        || (self.peek_at(after_name) == Some('(')
+                            && self.is_known_wrapper_function(cursor, name_end))
+                    {
+                        cursor = name_end;
+                        continue;
+                    }
+                }
+                let input_start = self.pos;
+                let output_start = self.output.len();
+                let depth_start = self.depth;
+                self.pos = cursor;
+                // Reuse repair boundaries, including missing quotes and embedded '#'.
+                let parsed = if chars::is_quote(c) {
+                    self.parse_string(containers == 0)
+                } else {
+                    self.parse_keyword_or_unquoted(containers == 0)
+                };
+                cursor = self.pos;
+                self.pos = input_start;
+                self.output.truncate(output_start);
+                self.depth = depth_start;
+                parsed?;
+                continue;
+            }
+            if !in_url && c == '/' && self.peek_at(cursor + 1) == Some('*') {
+                cursor += 2;
+                while self.peek_at(cursor).is_some() && !self.matches_at(cursor, "*/") {
+                    cursor += 1;
+                }
+                cursor += 2;
+                continue;
+            }
+            if !in_url && ((c == '/' && self.peek_at(cursor + 1) == Some('/')) || c == '#') {
+                while self.peek_at(cursor).is_some_and(|ch| ch != '\n') {
+                    cursor += 1;
+                }
+                continue;
+            }
+            if !in_url && c == '/' {
+                let mut regex_cursor = cursor + 1;
+                let mut escaped = false;
+                let mut regex_end = None;
+                while let Some(regex_char) = self.peek_at(regex_cursor) {
+                    if matches!(regex_char, '\n' | '\r') {
+                        break;
+                    }
+                    regex_cursor += 1;
+                    // Match the existing regex parser's unescaped-slash boundary.
+                    if regex_char == '/' && !escaped {
+                        regex_end = Some(regex_cursor);
+                        break;
+                    }
+                    escaped = regex_char == '\\' && !escaped;
+                }
+                if let Some(end) = regex_end {
+                    cursor = end;
+                    while self
+                        .peek_at(cursor)
+                        .is_some_and(|ch| ch.is_ascii_alphabetic())
+                    {
+                        cursor += 1;
+                    }
+                    continue;
+                }
+            }
+            match c {
+                '{' | '[' => containers += 1,
+                '}' | ']' if containers == 0 => return Ok(false),
+                '}' | ']' => containers -= 1,
+                '(' if containers == 0 => parentheses += 1,
+                ')' if containers == 0 => {
+                    parentheses -= 1;
+                    if parentheses == 0 {
+                        return Ok(true);
+                    }
+                }
+                _ => {}
+            }
+            cursor += 1;
+        }
+        Ok(false)
+    }
+
+    fn comma_starts_object_property(&mut self) -> Result<bool> {
+        if !self.in_object {
+            return Ok(false);
+        }
+        let input_start = self.pos;
+        let output_start = self.output.len();
+        self.pos += 1;
+        self.parse_whitespace_and_comments();
+        let key_start = self.pos;
+        // Reuse the key parsers without consuming input or output, including on errors.
+        let property = self
+            .parse_string(false)
+            .and_then(|parsed| {
+                if parsed {
+                    Ok(true)
+                } else {
+                    self.parse_unquoted_string(true, false)
+                }
+            })
+            .map(|parsed| {
+                self.parse_whitespace_and_comments();
+                parsed
+                    && matches!(self.peek(), Some(':' | '='))
+                    && !(self.peek_at(self.pos + 1) == Some('/')
+                        && self.ends_with_url_scheme(key_start, self.pos + 1))
+            });
+        self.pos = input_start;
+        self.output.truncate(output_start);
+        property
     }
 
     fn slice_starts_with(&self, start: usize, end: usize, prefix: &str) -> bool {

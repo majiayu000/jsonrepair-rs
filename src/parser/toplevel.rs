@@ -8,7 +8,7 @@ impl JsonRepairer {
     pub fn repair(mut self) -> Result<String> {
         self.parse_markdown_wrapped_open();
 
-        let processed = self.parse_value()?;
+        let processed = self.parse_value(false)?;
         if !processed {
             if self.at_end() {
                 return Err(self.error_kind(
@@ -81,7 +81,7 @@ impl JsonRepairer {
                 initial = false;
             }
 
-            processed_value = self.parse_value()?;
+            processed_value = self.parse_value(false)?;
         }
 
         if !processed_value {

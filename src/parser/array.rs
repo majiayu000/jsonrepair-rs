@@ -4,12 +4,14 @@ use super::JsonRepairer;
 use super::Result;
 
 impl JsonRepairer {
-    pub(super) fn parse_array(&mut self) -> Result<bool> {
+    pub(super) fn parse_array(&mut self, is_wrapper_argument: bool) -> Result<bool> {
         if self.peek() != Some('[') {
             return Ok(false);
         }
 
         self.enter_container()?;
+        let was_in_object = self.in_object;
+        self.in_object = false;
         self.output.push('[');
         let frame_start = self.output.len();
         self.pos += 1;
@@ -21,7 +23,10 @@ impl JsonRepairer {
         }
 
         let mut initial = true;
-        while !self.at_end() && self.peek() != Some(']') {
+        while !self.at_end()
+            && self.peek() != Some(']')
+            && !(is_wrapper_argument && self.peek() == Some(')'))
+        {
             if !initial {
                 let processed_comma = self.parse_char(',');
                 if !processed_comma {
@@ -39,7 +44,12 @@ impl JsonRepairer {
                 self.parse_skip_ellipsis();
             }
 
-            let processed_value = self.parse_value()?;
+            if is_wrapper_argument && self.peek() == Some(')') {
+                self.strip_trailing_comma(frame_start);
+                break;
+            }
+
+            let processed_value = self.parse_value(false)?;
             if !processed_value {
                 // Trailing comma or truncated input.
                 self.strip_trailing_comma(frame_start);
@@ -55,6 +65,7 @@ impl JsonRepairer {
             self.insert_before_last_whitespace("]");
         }
         self.leave_container();
+        self.in_object = was_in_object;
         Ok(true)
     }
 }
