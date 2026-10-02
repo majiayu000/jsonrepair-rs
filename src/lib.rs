@@ -298,7 +298,10 @@ fn correct_value_with_schema(value: &mut serde_json::Value, schema: &serde_json:
         Some(expected @ ("number" | "integer")) => {
             if let Some(text) = value.as_str() {
                 if let Ok(number) = text.parse::<serde_json::Number>() {
-                    if expected == "number" || number.is_i64() || number.is_u64() {
+                    if number.is_i64()
+                        || number.is_u64()
+                        || (expected == "number" && numeric_string_round_trips(text, &number))
+                    {
                         *value = Value::Number(number);
                     }
                 }
@@ -336,6 +339,62 @@ fn correct_value_with_schema(value: &mut serde_json::Value, schema: &serde_json:
     if let Some(corrected) = matching_enum_string(value, schema) {
         *value = Value::String(corrected);
     }
+}
+
+#[cfg(feature = "serde")]
+fn numeric_string_round_trips(text: &str, number: &serde_json::Number) -> bool {
+    // Only arbitrary_precision can store u128::MAX. In that mode, compare the
+    // retained decimal directly, since as_f64() may round an exact Number.
+    if serde_json::Number::from_u128(u128::MAX).is_some() {
+        // Parsing can lowercase E and insert an exponent's optional + sign.
+        // Compare those spellings without imposing a bound on the exponent.
+        let decimal_spelling = |text: &str| text.replace('E', "e").replace("e+", "e");
+        return decimal_spelling(text) == decimal_spelling(&number.to_string());
+    }
+    // The shortest float representation can hide rounding of large integers.
+    // Render integral floats in full; ordinary fractions use JSON's decimal form.
+    let rendered = match number.as_f64() {
+        Some(value) if value.fract() == 0.0 => format!("{value:.0}"),
+        _ => number.to_string(),
+    };
+    match (normalized_decimal(text), normalized_decimal(&rendered)) {
+        (Some(original), Some(converted)) => original == converted,
+        _ => false,
+    }
+}
+
+#[cfg(feature = "serde")]
+fn normalized_decimal(text: &str) -> Option<(String, i64)> {
+    let (mantissa, exponent) = match text.split_once(['e', 'E']) {
+        Some((mantissa, exponent)) => (mantissa, exponent),
+        None => (text, "0"),
+    };
+    let fraction_len = mantissa
+        .split_once('.')
+        .map_or(0, |(_, fraction)| fraction.len());
+    let negative = mantissa.starts_with('-');
+    let digits: String = mantissa
+        .trim_start_matches('-')
+        .chars()
+        .filter(|ch| *ch != '.')
+        .collect();
+    let significant = digits.trim_start_matches('0').trim_end_matches('0');
+    if significant.is_empty() {
+        // A zero mantissa is exact regardless of the exponent's magnitude.
+        return Some(("0".to_owned(), 0));
+    }
+    let trailing_zeros = digits.len() - digits.trim_end_matches('0').len();
+    let exponent = exponent
+        .parse::<i64>()
+        .ok()?
+        .checked_sub(i64::try_from(fraction_len).ok()?)?
+        .checked_add(i64::try_from(trailing_zeros).ok()?)?;
+    let signed_digits = if negative {
+        format!("-{significant}")
+    } else {
+        significant.to_owned()
+    };
+    Some((signed_digits, exponent))
 }
 
 #[cfg(feature = "serde")]
