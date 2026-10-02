@@ -77,6 +77,90 @@ fn repairs_truncated_llm_url_across_reader_chunks() {
 }
 
 #[test]
+fn preserves_url_content_across_reader_chunks() {
+    for (input, expected) in [
+        (
+            r#"{"content":"see https://example.com/foo/"#,
+            r#"{"content":"see https://example.com/foo/"}"#,
+        ),
+        (
+            "{\"content\":\"# Heading\nhttps://example.com/foo}",
+            r##"{"content":"# Heading\nhttps://example.com/foo"}"##,
+        ),
+        (
+            "[https://example.com/a%20b,1]",
+            r#"["https://example.com/a%20b",1]"#,
+        ),
+    ] {
+        for chunk_size in [1, 2, 3, 5] {
+            let mut output = Vec::new();
+            jsonrepair_reader_to_writer(
+                ChunkedReader::new(input.as_bytes(), chunk_size),
+                &mut output,
+            )
+            .unwrap();
+            assert_eq!(
+                output,
+                expected.as_bytes(),
+                "input {input:?}, chunk size {chunk_size}"
+            );
+        }
+    }
+}
+
+#[test]
+fn preserves_url_with_following_prose_across_reader_chunks() {
+    for (input, expected) in [
+        (
+            r#"{"content":"see https://example.com/foo and/or more}"#,
+            r#"{"content":"see https://example.com/foo and/or more"}"#,
+        ),
+        (
+            r#"["see https://example.com/a%20b and/or more,1]"#,
+            r#"["see https://example.com/a%20b and/or more",1]"#,
+        ),
+        (
+            r#"{"content":"see https://example.com/foo and more}"#,
+            r#"{"content":"see https://example.com/foo and more"}"#,
+        ),
+    ] {
+        for chunk_size in 1..=5 {
+            let mut output = Vec::new();
+            jsonrepair_reader_to_writer(
+                ChunkedReader::new(input.as_bytes(), chunk_size),
+                &mut output,
+            )
+            .unwrap();
+            assert_eq!(output, expected.as_bytes(), "chunk size {chunk_size}");
+        }
+    }
+}
+
+#[test]
+fn preserves_url_prose_before_comments_across_reader_chunks() {
+    for (input, expected) in [
+        (
+            r#"{"content":"see https://example.com/foo and/or more/* trailing */}"#,
+            r#"{"content":"see https://example.com/foo and/or more"}"#,
+        ),
+        (
+            "{\"content\":\"see https://example.com/foo and more// trailing\n}",
+            "{\"content\":\"see https://example.com/foo and more\"\n}",
+        ),
+    ] {
+        for chunk_size in 1..=5 {
+            let mut output = Vec::new();
+            jsonrepair_reader_to_writer(
+                ChunkedReader::new(input.as_bytes(), chunk_size),
+                &mut output,
+            )
+            .unwrap();
+            assert_eq!(output, expected.as_bytes(), "chunk size {chunk_size}");
+        }
+    }
+}
+
+#[test]
 fn preserves_repair_errors_without_partial_output() {
     for input in [&br#""\u00""#[..], &b"[\x0c"[..], &br#""\udfff""#[..]] {
         let mut output = Vec::new();
