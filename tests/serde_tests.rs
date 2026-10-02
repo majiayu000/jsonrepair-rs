@@ -131,3 +131,146 @@ fn schema_correction_preserves_repair_errors() {
 
     assert!(matches!(err, JsonRepairParseError::Repair(_)));
 }
+
+#[test]
+fn schema_number_preserves_inexact_integer_above_u64() {
+    let input = r#"{"n":"18446744073709551617"}"#;
+    let schema = json!({ "properties": { "n": { "type": "number" } } });
+
+    assert_eq!(
+        jsonrepair_value_with_schema(input, &schema).unwrap(),
+        json!({ "n": "18446744073709551617" })
+    );
+}
+
+#[test]
+fn schema_number_preserves_inexact_thirty_digit_integer() {
+    let input = r#"{"n":"999999999999999999999999999999"}"#;
+    let schema = json!({ "properties": { "n": { "type": "number" } } });
+
+    assert_eq!(
+        jsonrepair_value_with_schema(input, &schema).unwrap(),
+        json!({ "n": "999999999999999999999999999999" })
+    );
+}
+
+#[test]
+fn schema_number_preserves_other_inexact_decimal_strings() {
+    for text in [
+        "-9223372036854775809",
+        "18446744073709551617.0",
+        "1.8446744073709551617e19",
+        "1.8446744073709552e19",
+        "0.10000000000000001",
+        "1e-400",
+        "1e400",
+        "1e9223372036854775808",
+        "-1E+999999999999999999999999999999",
+        "1e-9223372036854775809",
+        "-1e-999999999999999999999999999999",
+    ] {
+        let input = json!(text).to_string();
+        assert_eq!(
+            jsonrepair_value_with_schema(&input, &json!({ "type": "number" })).unwrap(),
+            json!(text),
+            "must preserve {text}"
+        );
+    }
+}
+
+#[test]
+fn schema_number_corrects_retained_decimals() {
+    let retained: serde_json::Number = "18446744073709551617".parse().unwrap();
+    if retained.as_u128() != Some(18446744073709551617) {
+        return;
+    }
+
+    for text in [
+        "18446744073709551617",
+        "999999999999999999999999999999",
+        "-9223372036854775809",
+        "18446744073709551617.0",
+        "1.8446744073709551617e19",
+        "1.8446744073709552e19",
+        "0.10000000000000001",
+        "1e-400",
+        "1e400",
+        "1e9223372036854775808",
+        "1e+9223372036854775808",
+        "1E9223372036854775808",
+        "1e-9223372036854775809",
+        "1.2500e+999999999999999999999999999999",
+        "125E-999999999999999999999999999999",
+    ] {
+        assert_eq!(
+            jsonrepair_value_with_schema(&json!(text).to_string(), &json!({ "type": "number" }))
+                .unwrap(),
+            serde_json::from_str::<serde_json::Value>(text).unwrap(),
+            "must convert retained decimal {text}"
+        );
+    }
+}
+
+#[test]
+fn schema_number_corrects_exact_and_ordinary_decimal_strings() {
+    for (text, expected) in [
+        ("18446744073709551615", json!(u64::MAX)),
+        ("-9223372036854775808", json!(i64::MIN)),
+        ("18446744073709551616", json!(18446744073709551616.0_f64)),
+        (
+            "1.8446744073709551616e19",
+            json!(18446744073709551616.0_f64),
+        ),
+        ("0.1", json!(0.1)),
+        ("0.1000", json!(0.1)),
+        ("1.25", json!(1.25)),
+        ("1.2500e+0", json!(1.25)),
+        ("125e-2", json!(1.25)),
+        ("1e3", json!(1000.0)),
+        ("-0.0", json!(-0.0)),
+    ] {
+        let input = json!(text).to_string();
+        assert_eq!(
+            jsonrepair_value_with_schema(&input, &json!({ "type": "number" })).unwrap(),
+            expected,
+            "must convert {text}"
+        );
+    }
+}
+
+#[test]
+fn schema_number_corrects_zero_with_unbounded_exponents() {
+    for text in [
+        "0e9223372036854775808",
+        "-0e9223372036854775808",
+        "0E+9223372036854775808",
+        "-0.000E+999999999999999999999999999999",
+        "0.000e-9223372036854775809",
+        "-0e-999999999999999999999999999999",
+    ] {
+        let expected: serde_json::Number = text.parse().unwrap();
+        assert_eq!(expected.as_f64(), Some(0.0), "must parse zero {text}");
+        assert_eq!(
+            jsonrepair_value_with_schema(&json!(text).to_string(), &json!({ "type": "number" }))
+                .unwrap(),
+            serde_json::Value::Number(expected),
+            "must convert exact zero {text}"
+        );
+    }
+}
+
+#[test]
+fn schema_numeric_correction_preserves_nested_inexact_strings() {
+    let input = r#"{"numbers":["18446744073709551617","999999999999999999999999999999"],"integers":["18446744073709551617","999999999999999999999999999999"]}"#;
+    let schema = json!({
+        "properties": {
+            "numbers": { "items": { "type": "number" } },
+            "integers": { "items": { "type": "integer" } }
+        }
+    });
+
+    assert_eq!(
+        jsonrepair_value_with_schema(input, &schema).unwrap(),
+        serde_json::from_str::<serde_json::Value>(input).unwrap()
+    );
+}
