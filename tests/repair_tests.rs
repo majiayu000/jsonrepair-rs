@@ -2,7 +2,7 @@ use jsonrepair_rs::jsonrepair;
 
 // ── Helpers ──────────────────────────────────────────────────
 
-const DEEP_STACK_TEST_STACK_SIZE: usize = 16 * 1024 * 1024;
+const DEFAULT_STACK_TEST_STACK_SIZE: usize = 2 * 1024 * 1024;
 
 fn ok(input: &str, expected: &str) {
     let result = jsonrepair(input).unwrap_or_else(|e| panic!("repair failed for {input:?}: {e}"));
@@ -25,19 +25,40 @@ fn err_exact(input: &str, message: &str, position: usize) {
     assert!(err.column > 0, "expected column info for {input:?}");
 }
 
-fn run_with_large_stack<F>(f: F)
+fn run_with_default_stack<F>(f: F)
 where
     F: FnOnce() + Send + 'static,
 {
     let handle = std::thread::Builder::new()
-        .name("deep-stack-regression".to_string())
-        .stack_size(DEEP_STACK_TEST_STACK_SIZE)
+        .name("default-stack-regression".to_string())
+        .stack_size(DEFAULT_STACK_TEST_STACK_SIZE)
         .spawn(f)
-        .unwrap_or_else(|e| panic!("failed to spawn deep-stack test thread: {e}"));
+        .unwrap_or_else(|e| panic!("failed to spawn default-stack test thread: {e}"));
 
     if let Err(payload) = handle.join() {
         std::panic::resume_unwind(payload);
     }
+}
+
+fn run_depth_regression(name: &str, f: impl FnOnce() + Send + 'static) {
+    const CHILD_TEST: &str = "JSONREPAIR_DEPTH_SUBPROCESS";
+    if std::env::var(CHILD_TEST).as_deref() == Ok(name) {
+        run_with_default_stack(f);
+        return;
+    }
+
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", name, "--nocapture"])
+        .env(CHILD_TEST, name)
+        .output()
+        .expect("run depth regression subprocess");
+    assert!(
+        output.status.success(),
+        "depth regression exited with {}\nstdout: {}\nstderr: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
 }
 
 // ── 1. Valid JSON (pass-through, whitespace preserved) ───────
@@ -1523,9 +1544,129 @@ fn unquoted_string_pass_through_quoted() {
 // ── 53. Depth limit ──────────────────────────────────────────────
 
 #[test]
+fn repair_rejects_objectid_recursion_on_default_stack() {
+    run_depth_regression("repair_rejects_objectid_recursion_on_default_stack", || {
+        let input = format!("{}\"id\"{}", "ObjectId(".repeat(400), ")".repeat(400));
+        let error = jsonrepair(&input).unwrap_err();
+        assert_eq!(
+            error.kind,
+            jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+        );
+    });
+}
+
+#[test]
+fn repair_rejects_callback_recursion_on_default_stack() {
+    run_depth_regression("repair_rejects_callback_recursion_on_default_stack", || {
+        let input = format!("{}null{}", "callback(".repeat(400), ")".repeat(400));
+        let error = jsonrepair(&input).unwrap_err();
+        assert_eq!(
+            error.kind,
+            jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+        );
+    });
+}
+
+#[test]
+fn repair_rejects_concatenation_recursion_on_default_stack() {
+    run_depth_regression(
+        "repair_rejects_concatenation_recursion_on_default_stack",
+        || {
+            let input = vec!["\"a\""; 1200].join("+");
+            let error = jsonrepair(&input).unwrap_err();
+            assert_eq!(
+                error.kind,
+                jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+            );
+        },
+    );
+}
+
+#[test]
+fn repair_rejects_array_recursion_on_default_stack() {
+    run_depth_regression("repair_rejects_array_recursion_on_default_stack", || {
+        for input in [
+            "[".repeat(513),
+            format!("{}{}", "[".repeat(513), "]".repeat(513)),
+        ] {
+            let error = jsonrepair(&input).unwrap_err();
+            assert_eq!(
+                error.kind,
+                jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+            );
+        }
+    });
+}
+
+#[test]
+fn repair_rejects_object_recursion_on_default_stack() {
+    run_depth_regression("repair_rejects_object_recursion_on_default_stack", || {
+        let input = format!("{}null{}", "{\"a\":".repeat(513), "}".repeat(513));
+        let error = jsonrepair(&input).unwrap_err();
+        assert_eq!(
+            error.kind,
+            jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+        );
+    });
+}
+
+#[test]
+fn repair_rejects_fence_recursion_on_default_stack() {
+    run_depth_regression("repair_rejects_fence_recursion_on_default_stack", || {
+        let input = format!("[{}null]", "```json\n".repeat(513));
+        let error = jsonrepair(&input).unwrap_err();
+        assert_eq!(
+            error.kind,
+            jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+        );
+    });
+}
+
+#[test]
+fn repair_observes_shared_depth_budget_on_default_stack() {
+    run_depth_regression(
+        "repair_observes_shared_depth_budget_on_default_stack",
+        || {
+            for wrapper in ["ObjectId(", "callback(", "new ObjectId(", "NumberLong("] {
+                let input = format!("{}null{}", wrapper.repeat(128), ")".repeat(128));
+                ok(&input, "null");
+                let input = format!("{}null{}", wrapper.repeat(129), ")".repeat(129));
+                let error = jsonrepair(&input).unwrap_err();
+                assert_eq!(
+                    error.kind,
+                    jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+                );
+            }
+
+            let input = format!("{}null{}", "{\"a\":".repeat(128), "}".repeat(128));
+            ok(&input, &input);
+            let input = vec!["\"a\""; 129].join("+");
+            ok(&input, &format!("\"{}\"", "a".repeat(129)));
+
+            let prefix = format!("{}{}", "[".repeat(63), "ObjectId(".repeat(64));
+            let suffix = format!("{}{}", ")".repeat(64), "]".repeat(63));
+            let input = format!("{prefix}\"a\"+\"b\"{suffix}");
+            let expected = format!("{}\"ab\"{}", "[".repeat(63), "]".repeat(63));
+            ok(&input, &expected);
+            let input = format!("{prefix}\"a\"+\"b\"+\"c\"{suffix}");
+            let error = jsonrepair(&input).unwrap_err();
+            assert_eq!(
+                error.kind,
+                jsonrepair_rs::JsonRepairErrorKind::MaxDepthExceeded
+            );
+
+            let value = format!("{}null{}", "ObjectId(".repeat(127), ")".repeat(127));
+            ok(&format!("[{value},{value}]"), "[null,null]");
+            let input = format!("[{}null]", "```json\n".repeat(127));
+            assert!(jsonrepair(&input).is_ok());
+        },
+    );
+}
+
+#[test]
 fn repair_rejects_deeply_nested_input() {
-    run_with_large_stack(|| {
-        let depth = 513;
+    run_with_default_stack(|| {
+        let depth = 129;
         let input = "[".repeat(depth);
         let result = jsonrepair(&input);
         assert!(result.is_err());
@@ -1544,8 +1685,8 @@ fn repair_rejects_deeply_nested_input() {
 
 #[test]
 fn repair_accepts_max_depth_nesting() {
-    run_with_large_stack(|| {
-        let depth = 512;
+    run_with_default_stack(|| {
+        let depth = 128;
         let input = "[".repeat(depth) + &"]".repeat(depth);
         assert!(jsonrepair(&input).is_ok());
     });
@@ -1627,7 +1768,7 @@ fn error_includes_kind() {
 
 #[test]
 fn large_deeply_nested_truncated_array_repairs_below_limit() {
-    run_with_large_stack(|| {
+    run_with_default_stack(|| {
         let depth = 128;
         let input = format!("{}true", "[".repeat(depth));
         let expected = format!("{}true{}", "[".repeat(depth), "]".repeat(depth));

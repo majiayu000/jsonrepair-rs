@@ -310,7 +310,10 @@ impl JsonRepairer {
                 self.output.truncate(idx);
             }
             let second_start = self.output.len();
-            if self.parse_string()? {
+            self.enter_container()?;
+            let parsed = self.parse_string()?;
+            self.leave_container();
+            if parsed {
                 // Remove start quote from second string.
                 if second_start < self.output.len() {
                     self.output.remove(second_start);
@@ -491,6 +494,7 @@ impl JsonRepairer {
             return Ok(false);
         }
 
+        self.enter_container()?;
         self.pos = cursor + 1;
         self.parse_whitespace_and_comments();
         if self.peek() == Some(')') {
@@ -509,6 +513,7 @@ impl JsonRepairer {
             }
         }
 
+        self.leave_container();
         Ok(true)
     }
 
