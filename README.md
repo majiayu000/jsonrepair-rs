@@ -33,8 +33,15 @@ compatibility goals against the JavaScript `jsonrepair` and Python
   candidate for CLI-supplied JSON.
 - [OpenBitFun](https://github.com/GCWing/OpenBitFun/blob/main/src/crates/execution/tool-call-jsonrepair/README.md)
   uses a local fork of `jsonrepair-rs` 0.2.1 for streamed tool-call arguments.
-  Its fork adds a policy that preserves `#`, `//`, and `/* ... */` in malformed
-  tool arguments instead of treating them as comments.
+  Its tool-call profile disables parsing of `#`, `//`, and `/* ... */` as
+  comments; recovery can differ from upstream and can still fail.
+- [OpenFlow](https://github.com/philbotar/OpenFlow/blob/main/crates/providers/src/mapping/mod.rs)
+  uses `jsonrepair` after strict parsing fails for object/array-shaped tool
+  arguments, then parses the repaired output again.
+
+See [downstream compatibility boundaries](docs/downstream-compatibility.md) for
+verified call sites, synthetic regression coverage, and differences from the
+OpenBitFun comment policy.
 
 ## Trust And Limits
 
@@ -284,6 +291,9 @@ them outside this crate.
 
 - Maximum parser nesting depth is 128, counting arrays, objects, JSONP/MongoDB
   wrappers, recursive string concatenations, and nested Markdown fences together.
+- The default policy strips comments outside strings. If a tool argument has a
+  missing opening quote before `#`, `//`, or `/*`, intended content can be lost.
+  Valid JSON output is not proof that the original intent was preserved.
 - The crate preserves much of the original whitespace where possible.
 - It returns a repaired JSON string, not a `serde_json::Value`.
 - The `jsonrepair_reader_to_writer` API supports reader-to-writer workflows,
