@@ -64,19 +64,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Memory Behavior
 
-The `0.2.0` MVP is streaming-oriented at the API boundary, but it is not yet a
-constant-memory streaming parser.
+The current implementation is streaming-oriented at the API boundary, but it
+is not a constant-memory streaming parser.
 
 Current behavior:
 
 1. Read the complete input stream into an internal `String`.
-2. Run the existing repair parser.
+2. Copy the input into the repair parser's `Vec<char>` and run the parser.
 3. Buffer the repaired output internally.
 4. Write the repaired JSON to the destination.
 
 This keeps behavior identical to `jsonrepair(input)` and avoids exposing a
 partially repaired output on repair failure. It also means peak memory is still
-roughly proportional to input size plus repaired output size.
+proportional to input size plus repaired output size, including the parser's
+additional character buffer (four bytes per Unicode scalar value, before
+capacity overhead). The nesting limit does not impose an input-byte limit.
+
+The reader must reach EOF before repair begins. Bound input size and read time
+when using an untrusted source. If applying a byte limit, detect and reject
+over-limit input; silently truncating the reader can produce a successful repair
+of an incomplete payload.
+
+Read and repair errors do not write to the destination, but `Write` errors can
+leave partially written output. These helpers do not provide transactional file
+replacement. Use a temporary destination and replace the target after successful
+completion if partial writes would be harmful.
 
 ## Non-Goals For The MVP
 
