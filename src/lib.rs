@@ -40,6 +40,8 @@ pub use error::{JsonRepairError, JsonRepairErrorKind};
 #[non_exhaustive]
 pub struct RepairOptions {
     strict: bool,
+    preserve_comment_markers: bool,
+    decode_unquoted_escapes: bool,
 }
 
 impl RepairOptions {
@@ -50,7 +52,7 @@ impl RepairOptions {
 
     /// Return an options value that rejects any input requiring repair.
     pub fn strict() -> Self {
-        Self { strict: true }
+        Self::default().with_strict(true)
     }
 
     /// Enable or disable strict mode.
@@ -62,6 +64,29 @@ impl RepairOptions {
     /// Whether strict mode is enabled.
     pub fn is_strict(&self) -> bool {
         self.strict
+    }
+
+    /// Preserve `#`, `//` and `/* ... */` as content instead of stripping comments.
+    ///
+    /// Disabled by default. This disables comment parsing throughout the input
+    /// and allows slashes in unquoted strings. It does not enable multiline
+    /// unquoted strings or change escape handling.
+    pub fn with_preserve_comment_markers(mut self, preserve: bool) -> Self {
+        self.preserve_comment_markers = preserve;
+        self
+    }
+
+    /// Interpret JSON escapes in unquoted strings, including unquoted keys.
+    ///
+    /// Disabled by default, independently of comment handling. Only complete
+    /// JSON escapes are interpreted; other backslashes remain literal. Unicode
+    /// surrogate pairs follow the same validation as quoted strings.
+    ///
+    /// Enabling this turns `C:\new\table.txt` into a string containing a newline
+    /// and a tab. Leave it disabled when backslashes should be literal data.
+    pub fn with_decode_unquoted_escapes(mut self, decode: bool) -> Self {
+        self.decode_unquoted_escapes = decode;
+        self
     }
 }
 
@@ -237,7 +262,7 @@ pub fn jsonrepair_with_options(
     input: &str,
     options: RepairOptions,
 ) -> Result<String, JsonRepairError> {
-    let repairer = parser::JsonRepairer::new(input);
+    let repairer = parser::JsonRepairer::new(input, options);
     let repaired = repairer.repair()?;
 
     if options.strict {
