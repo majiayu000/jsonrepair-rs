@@ -115,3 +115,57 @@ fn escape_decoding_does_not_reinterpret_a_url_prefix_as_syntax() {
         );
     }
 }
+
+#[test]
+fn recognized_urls_preserve_apostrophes_without_swallowing_dangling_quotes() {
+    for decode in [false, true] {
+        for url in [
+            "https://example.com/O'Reilly",
+            "//example.com/O'Reilly",
+            "https://example.com/a('b)",
+        ] {
+            assert_eq!(
+                repaired_value(&format!("{{url:{url}}}"), options(true, decode)),
+                json!({"url":url})
+            );
+            assert_eq!(
+                repaired_value(&format!("[{url},2]"), options(true, decode)),
+                json!([url, 2])
+            );
+            assert_eq!(
+                repaired_value(&format!("{{x:cb({url},2)}}"), options(true, decode)),
+                json!({"x":[url,2]})
+            );
+        }
+        for quote in ["'", "\""] {
+            assert_eq!(
+                repaired_value(
+                    &format!("{{url:https://example.com/path{quote},next:2}}"),
+                    options(true, decode)
+                ),
+                json!({"url":"https://example.com/path","next":2})
+            );
+            assert_eq!(
+                repaired_value(
+                    &format!("[https://example.com/path{quote},2]"),
+                    options(true, decode)
+                ),
+                json!(["https://example.com/path", 2])
+            );
+            assert_eq!(
+                repaired_value(
+                    &format!("{{x:cb(https://example.com/path{quote})}}"),
+                    options(true, decode)
+                ),
+                json!({"x":"https://example.com/path"})
+            );
+            assert_eq!(
+                repaired_value(
+                    &format!("https://example.com/path{quote}"),
+                    options(true, decode)
+                ),
+                json!("https://example.com/path")
+            );
+        }
+    }
+}

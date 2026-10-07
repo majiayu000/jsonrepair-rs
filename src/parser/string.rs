@@ -439,12 +439,20 @@ impl JsonRepairer {
                 continue;
             }
 
+            let quote_boundary = chars::is_quote(c)
+                && !(in_preserved_url
+                    && c == '\''
+                    && self.peek_at(self.pos + 1).is_some_and(chars::is_url_char)
+                    && !(is_wrapper_argument
+                        && self.peek_at(self.pos + 1) == Some(')')
+                        && parenthesis_depth == 0));
+
             // URL parentheses are content, even when unbalanced. They must
             // not hide enclosing JSON boundaries or a dangling closing quote.
             // Check before non-URL text ends the URL-prefix state below.
             if in_preserved_url
                 && ((chars::is_unquoted_string_delimiter(c) && !matches!(c, '/' | '+' | ';'))
-                    || chars::is_quote(c))
+                    || quote_boundary)
             {
                 break;
             }
@@ -475,7 +483,7 @@ impl JsonRepairer {
                 && !(in_preserved_url && matches!(c, '+' | ';'));
             if parenthesis_depth == 0
                 && (delimiter
-                    || chars::is_quote(c)
+                    || quote_boundary
                     || (is_key && matches!(c, ':' | '='))
                     || (is_wrapper_argument && c == ')'))
             {
