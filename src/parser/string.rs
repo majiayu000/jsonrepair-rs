@@ -426,14 +426,19 @@ impl JsonRepairer {
                 // Only decoded URL characters keep the URL delimiter exception.
                 // Rendering below still owns Unicode validation and error positions.
                 if in_preserved_url {
-                    in_preserved_url = match self.peek_at(self.pos + 1) {
-                        Some('/') => true,
+                    let decoded = match self.peek_at(self.pos + 1) {
+                        Some('/') => Some('/'),
                         Some('u') => self
                             .hex_quad(self.pos + 2)
-                            .and_then(|unit| char::from_u32(u32::from(unit)))
-                            .is_some_and(chars::is_url_char),
-                        _ => false,
+                            .and_then(|unit| char::from_u32(u32::from(unit))),
+                        _ => None,
                     };
+                    in_preserved_url = decoded.is_some_and(chars::is_url_char);
+                    match decoded {
+                        Some('(') => parenthesis_depth += 1,
+                        Some(')') => parenthesis_depth = parenthesis_depth.saturating_sub(1),
+                        _ => {}
+                    }
                 }
                 self.pos += length;
                 continue;
