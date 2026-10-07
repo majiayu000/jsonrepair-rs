@@ -417,12 +417,25 @@ impl JsonRepairer {
         }
 
         let mut parenthesis_depth = 0usize;
+        let mut preserving_comment_text = false;
+        let mut in_protocol_relative_url =
+            self.options.preserve_comment_markers && !is_key && self.matches_at(start, "//");
         while let Some(c) = self.peek() {
             if let Some(length) = self.unquoted_json_escape_length() {
                 // Escaped quotes and slashes belong to the token, not its boundary.
                 self.pos += length;
                 continue;
             }
+            // URL parentheses are content, even when unbalanced. They must
+            // not hide enclosing JSON boundaries or a dangling closing quote.
+            // Check before non-URL text ends the URL-prefix state below.
+            if in_protocol_relative_url
+                && ((chars::is_unquoted_string_delimiter(c) && !matches!(c, '/' | '+' | ';'))
+                    || chars::is_quote(c))
+            {
+                break;
+            }
+
             if c == '(' {
                 parenthesis_depth += 1;
                 self.pos += 1;
@@ -435,9 +448,27 @@ impl JsonRepairer {
                 continue;
             }
 
+            // Only an actual comment marker makes later slashes text. This
+            // leaves single-slash regex boundaries intact, including after an
+            // unquoted key during lookahead. Recognized URLs keep their own
+            // continuation path so '+' and ';' remain URL characters.
+            // A leading '//' value keeps those delimiters while its prefix is
+            // a URL. Whitespace or other non-URL text ends this exception.
+            in_protocol_relative_url &= chars::is_url_char(c);
+            let url_continuation = self.options.preserve_comment_markers
+                && c == '/'
+                && self.looks_like_url_start(start, self.pos);
+            if self.options.preserve_comment_markers
+                && !url_continuation
+                && (c == '#' || (c == '/' && matches!(self.peek_at(self.pos + 1), Some('/' | '*'))))
+            {
+                preserving_comment_text = true;
+            }
+            let delimiter = chars::is_unquoted_string_delimiter(c)
+                && !(preserving_comment_text && c == '/' && !url_continuation)
+                && !(in_protocol_relative_url && matches!(c, '+' | ';'));
             if parenthesis_depth == 0
-                && ((chars::is_unquoted_string_delimiter(c)
-                    && !(c == '/' && self.options.preserve_comment_markers))
+                && (delimiter
                     || chars::is_quote(c)
                     || (is_key && matches!(c, ':' | '='))
                     || (is_wrapper_argument && c == ')'))
@@ -686,9 +717,15 @@ impl JsonRepairer {
     }
 
     fn wrapper_has_closing_parenthesis(&mut self, start: usize) -> Result<bool> {
+        struct KeyContext {
+            is_object: bool,
+            expects_key: bool,
+        }
+
         let mut cursor = start + 1;
         let mut parentheses = 1usize;
         let mut containers = 0usize;
+        let mut key_contexts: Vec<KeyContext> = Vec::new();
         let mut in_url = false;
         while let Some(c) = self.peek_at(cursor) {
             if in_url && !chars::is_url_char(c) {
@@ -700,8 +737,17 @@ impl JsonRepairer {
             {
                 in_url = true;
             }
-            if !in_url && (chars::is_quote(c) || chars::is_identifier_start(c)) {
-                if chars::is_identifier_start(c) {
+            let is_object_key = key_contexts
+                .last()
+                .is_some_and(|context| context.is_object && context.expects_key);
+            if !in_url
+                && (chars::is_quote(c)
+                    || chars::is_identifier_start(c)
+                    || (self.options.preserve_comment_markers
+                        && (c == '#'
+                            || (c == '/' && matches!(self.peek_at(cursor + 1), Some('/' | '*'))))))
+            {
+                if chars::is_identifier_start(c) && !is_object_key {
                     let mut name_end = cursor;
                     while self
                         .peek_at(name_end)
@@ -729,17 +775,34 @@ impl JsonRepairer {
                 // Reuse repair boundaries, including missing quotes and embedded '#'.
                 let parsed = if chars::is_quote(c) {
                     self.parse_string(containers == 0)
-                } else {
+                } else if is_object_key {
+                    // A nested object's key must stop before its value. This
+                    // lets a following '//' value use the same URL boundaries
+                    // as normal parsing, while wrapper/array values like a:b
+                    // keep their existing unquoted-value semantics.
+                    self.parse_unquoted_string(true, false)
+                } else if chars::is_identifier_start(c) {
                     self.parse_keyword_or_unquoted(containers == 0)
+                } else {
+                    self.parse_unquoted_string(false, containers == 0)
                 };
                 cursor = self.pos;
                 self.pos = input_start;
                 self.output.truncate(output_start);
                 self.depth = depth_start;
                 parsed?;
+                if is_object_key {
+                    if let Some(context) = key_contexts.last_mut() {
+                        context.expects_key = false;
+                    }
+                }
                 continue;
             }
-            if !in_url && c == '/' && self.peek_at(cursor + 1) == Some('*') {
+            if !self.options.preserve_comment_markers
+                && !in_url
+                && c == '/'
+                && self.peek_at(cursor + 1) == Some('*')
+            {
                 cursor += 2;
                 while self.peek_at(cursor).is_some() && !self.matches_at(cursor, "*/") {
                     cursor += 1;
@@ -747,7 +810,10 @@ impl JsonRepairer {
                 cursor += 2;
                 continue;
             }
-            if !in_url && ((c == '/' && self.peek_at(cursor + 1) == Some('/')) || c == '#') {
+            if !self.options.preserve_comment_markers
+                && !in_url
+                && ((c == '/' && self.peek_at(cursor + 1) == Some('/')) || c == '#')
+            {
                 while self.peek_at(cursor).is_some_and(|ch| ch != '\n') {
                     cursor += 1;
                 }
@@ -781,9 +847,32 @@ impl JsonRepairer {
                 }
             }
             match c {
-                '{' | '[' => containers += 1,
+                '{' | '[' => {
+                    containers += 1;
+                    if self.options.preserve_comment_markers {
+                        key_contexts.push(KeyContext {
+                            is_object: c == '{',
+                            expects_key: true,
+                        });
+                    }
+                }
                 '}' | ']' if containers == 0 => return Ok(false),
-                '}' | ']' => containers -= 1,
+                '}' | ']' => {
+                    containers -= 1;
+                    key_contexts.pop();
+                }
+                ',' => {
+                    if let Some(context) = key_contexts.last_mut() {
+                        context.expects_key = true;
+                    }
+                }
+                ':' | '=' => {
+                    // Numeric/symbol keys can reach their separator through
+                    // the raw scan without entering the string parser above.
+                    if let Some(context) = key_contexts.last_mut() {
+                        context.expects_key = false;
+                    }
+                }
                 '(' if containers == 0 => parentheses += 1,
                 ')' if containers == 0 => {
                     parentheses -= 1;
