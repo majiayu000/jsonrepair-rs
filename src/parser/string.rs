@@ -417,19 +417,32 @@ impl JsonRepairer {
         }
 
         let mut parenthesis_depth = 0usize;
-        let mut preserving_comment_text = false;
-        let mut in_protocol_relative_url =
-            self.options.preserve_comment_markers && !is_key && self.matches_at(start, "//");
+        let mut in_preserved_url = self.options.preserve_comment_markers
+            && !is_key
+            && (self.matches_at(start, "//") || self.has_url_scheme_at(start));
         while let Some(c) = self.peek() {
             if let Some(length) = self.unquoted_json_escape_length() {
                 // Escaped quotes and slashes belong to the token, not its boundary.
+                // Only decoded URL characters keep the URL delimiter exception.
+                // Rendering below still owns Unicode validation and error positions.
+                if in_preserved_url {
+                    in_preserved_url = match self.peek_at(self.pos + 1) {
+                        Some('/') => true,
+                        Some('u') => self
+                            .hex_quad(self.pos + 2)
+                            .and_then(|unit| char::from_u32(u32::from(unit)))
+                            .is_some_and(chars::is_url_char),
+                        _ => false,
+                    };
+                }
                 self.pos += length;
                 continue;
             }
+
             // URL parentheses are content, even when unbalanced. They must
             // not hide enclosing JSON boundaries or a dangling closing quote.
             // Check before non-URL text ends the URL-prefix state below.
-            if in_protocol_relative_url
+            if in_preserved_url
                 && ((chars::is_unquoted_string_delimiter(c) && !matches!(c, '/' | '+' | ';'))
                     || chars::is_quote(c))
             {
@@ -448,25 +461,18 @@ impl JsonRepairer {
                 continue;
             }
 
-            // Only an actual comment marker makes later slashes text. This
-            // leaves single-slash regex boundaries intact, including after an
-            // unquoted key during lookahead. Recognized URLs keep their own
-            // continuation path so '+' and ';' remain URL characters.
-            // A leading '//' value keeps those delimiters while its prefix is
-            // a URL. Whitespace or other non-URL text ends this exception.
-            in_protocol_relative_url &= chars::is_url_char(c);
-            let url_continuation = self.options.preserve_comment_markers
+            // Preserve embedded slashes under the content policy, but leave
+            // an initial non-comment slash to the existing regex parser.
+            // URL values retain '+' and ';' only while their prefix remains a
+            // URL. Do not re-enter this mode after ordinary non-URL content.
+            in_preserved_url &= chars::is_url_char(c);
+            let starts_regex = !is_key
+                && self.pos == start
                 && c == '/'
-                && self.looks_like_url_start(start, self.pos);
-            if self.options.preserve_comment_markers
-                && !url_continuation
-                && (c == '#' || (c == '/' && matches!(self.peek_at(self.pos + 1), Some('/' | '*'))))
-            {
-                preserving_comment_text = true;
-            }
+                && !matches!(self.peek_at(self.pos + 1), Some('/' | '*'));
             let delimiter = chars::is_unquoted_string_delimiter(c)
-                && !(preserving_comment_text && c == '/' && !url_continuation)
-                && !(in_protocol_relative_url && matches!(c, '+' | ';'));
+                && !(self.options.preserve_comment_markers && c == '/' && !starts_regex)
+                && !(in_preserved_url && matches!(c, '+' | ';'));
             if parenthesis_depth == 0
                 && (delimiter
                     || chars::is_quote(c)
@@ -558,6 +564,10 @@ impl JsonRepairer {
         if slash_idx + 2 > self.chars.len() || start >= slash_idx + 2 {
             return false;
         }
+        self.has_url_scheme_at(start)
+    }
+
+    fn has_url_scheme_at(&self, start: usize) -> bool {
         self.matches_at(start, "http://")
             || self.matches_at(start, "https://")
             || self.matches_at(start, "ftp://")
