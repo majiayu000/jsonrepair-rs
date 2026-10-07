@@ -169,3 +169,151 @@ fn recognized_urls_preserve_apostrophes_without_swallowing_dangling_quotes() {
         }
     }
 }
+
+fn assert_url_contexts(url: &str, expected: &str, policy: RepairOptions) {
+    for (input, value) in [
+        (
+            format!("{{url:{url},next:2}}"),
+            json!({"url":expected,"next":2}),
+        ),
+        (format!("[{url},2]"), json!([expected, 2])),
+        (format!("cb({url})"), json!(expected)),
+        (
+            format!("{{x:cb(cb({url},2),a:b),next:3}}"),
+            json!({"x":[[expected,2],"a:b"],"next":3}),
+        ),
+    ] {
+        assert_eq!(repaired_value(&input, policy), value, "{input}");
+    }
+}
+
+#[test]
+fn url_parenthesis_depth_ends_with_raw_or_decoded_non_url_text() {
+    assert_eq!(
+        repaired_value("{url:https://x/a( text,next:2}", options(true, false)),
+        json!({"url":"https://x/a( text","next":2})
+    );
+    for (preserve, decode) in [(true, false), (true, true), (false, true)] {
+        for prefix in ["https://x/", "//x/"] {
+            if !preserve && prefix.starts_with("//") {
+                continue;
+            }
+            for (opening, decoded_opening) in [("a(", "a("), (r"a\u0028", "a(")] {
+                if !decode && opening.contains('\\') {
+                    continue;
+                }
+                for (separator, decoded_separator) in [
+                    (" ", " "),
+                    ("\t", "\t"),
+                    (r"\u0020", " "),
+                    (r"\t", "\t"),
+                    (r"\n", "\n"),
+                    (r"\u0001", "\u{0001}"),
+                    (r"\u002C", ","),
+                ] {
+                    if !decode && separator.starts_with('\\') {
+                        continue;
+                    }
+                    assert_url_contexts(
+                        &format!("{prefix}{opening}{separator}text"),
+                        &format!("{prefix}{decoded_opening}{decoded_separator}text"),
+                        options(preserve, decode),
+                    );
+                }
+            }
+        }
+        // Ordinary wrapper text still owns its parentheses after URL mode ends.
+        assert_eq!(
+            repaired_value("{x:cb(text(a,b),2),next:3}", options(preserve, decode)),
+            json!({"x":["text(a,b)",2],"next":3})
+        );
+        assert_url_contexts(
+            "https://x/a( text(b,c)",
+            "https://x/a( text(b,c)",
+            options(preserve, decode),
+        );
+    }
+}
+
+#[test]
+fn url_apostrophes_look_through_valid_decoded_url_characters() {
+    assert_eq!(
+        repaired_value(r"{url:https://x/O'\/path}", options(true, true)),
+        json!({"url":"https://x/O'/path"})
+    );
+    for preserve in [true, false] {
+        for prefix in ["https://x/", "//x/"] {
+            if !preserve && prefix.starts_with("//") {
+                continue;
+            }
+            for (suffix, decoded) in [
+                (r"O'\/path", "O'/path"),
+                (r"O'\u002Fpath", "O'/path"),
+                (r"O'\u0052eilly", "O'Reilly"),
+                (r"a('\u0062)", "a('b)"),
+                (r"a'\u0028b)", "a'(b)"),
+                (r"a('\u0029", "a(')"),
+                (r"a'\u0029", "a')"),
+                (r"a'\u0027b", "a''b"),
+            ] {
+                assert_url_contexts(
+                    &format!("{prefix}{suffix}"),
+                    &format!("{prefix}{decoded}"),
+                    options(preserve, true),
+                );
+            }
+            // A raw wrapper close still makes the preceding quote dangling.
+            assert_eq!(
+                repaired_value(&format!("cb({prefix}a')"), options(preserve, true)),
+                json!(format!("{prefix}a"))
+            );
+        }
+    }
+}
+
+#[test]
+fn decoding_standard_urls_is_independent_of_comment_preservation() {
+    assert_eq!(
+        repaired_value(r"{url:https://example.com/a\/b}", options(false, true)),
+        json!({"url":"https://example.com/a/b"})
+    );
+    for scheme in ["http", "https", "ftp", "mailto", "file", "data", "irc"] {
+        for (suffix, decoded) in [
+            (r"a\/b+c;v", "a/b+c;v"),
+            (r"a\u002Fb+c;v", "a/b+c;v"),
+            (r"a\u0028b)/c", "a(b)/c"),
+            (r"a(b\u0029/c", "a(b)/c"),
+            (r"a\u0028b\u0029/c", "a(b)/c"),
+        ] {
+            for preserve in [false, true] {
+                assert_url_contexts(
+                    &format!("{scheme}://example.com/{suffix}"),
+                    &format!("{scheme}://example.com/{decoded}"),
+                    options(preserve, true),
+                );
+            }
+        }
+    }
+    for decode in [false, true] {
+        assert_eq!(
+            repaired_value("{url:// comment\n2,next:3}", options(false, decode)),
+            json!({"url":2,"next":3})
+        );
+    }
+    for suffix in [r"a\uD800", r"a\uDC00", r"a\uD800\u0041"] {
+        let input = format!("{{url:https://x/{suffix}}}");
+        for preserve in [false, true] {
+            let error = jsonrepair_with_options(&input, options(preserve, true)).unwrap_err();
+            assert_eq!(error.kind, JsonRepairErrorKind::InvalidUnicode);
+            assert_eq!(error.position, input.find('\\').unwrap());
+            assert_eq!(error.column, error.position + 1);
+        }
+    }
+    for suffix in [r"a\u12", r"a\uZZZZ", r"a\"] {
+        assert_url_contexts(
+            &format!("https://x/{suffix}"),
+            &format!("https://x/{suffix}"),
+            options(false, true),
+        );
+    }
+}
