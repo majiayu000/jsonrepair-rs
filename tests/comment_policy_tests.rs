@@ -248,18 +248,14 @@ fn keeps_regex_repair_for_non_comment_slashes() {
 }
 
 #[test]
-fn keeps_slash_boundaries_before_any_comment_marker() {
-    for input in [
-        r#"{"note": foo/bar}"#,
-        r#"{"note": foo /bar/}"#,
-        r#"[foo/bar, baz]"#,
-        r#"cb(foo/bar, baz)"#,
+fn preserves_embedded_slashes_in_unquoted_content() {
+    for (input, expected) in [
+        (r#"{"note": foo/bar}"#, r#"{"note": "foo/bar"}"#),
+        (r#"{"note": foo /bar/}"#, r#"{"note": "foo /bar/"}"#),
+        (r#"[foo/bar, baz]"#, r#"["foo/bar", "baz"]"#),
+        (r#"cb(foo/bar, baz)"#, r#"["foo/bar", "baz"]"#),
     ] {
-        assert_eq!(
-            jsonrepair_with_options(input, content_options()),
-            jsonrepair(input),
-            "{input}"
-        );
+        assert_content(input, expected);
     }
 }
 

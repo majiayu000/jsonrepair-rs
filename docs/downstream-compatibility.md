@@ -102,6 +102,15 @@ unquoted value. Do not advertise universal content preservation for either
 profile. Default comment behavior remains unchanged. Actual multiline unquoted
 strings remain a separate issue; neither option enables them.
 
+Additional crate regressions cover preserved comment markers alongside leading
+regex values, URL `+` and `;`, unbalanced URL parentheses, and nested wrappers
+containing object keys and ordinary colon-bearing values. Integration cases
+exercise escape decoding within those values and strict-mode precedence over
+both policies. These are synthetic crate tests, not a build or release
+acceptance test of a downstream workspace. URL recognition uses raw prefixes;
+escape decoding does not reinterpret an escaped prefix as URL syntax. See
+[repair options](repair-options.md) for that boundary.
+
 Before executing repaired tool arguments, check both the application schema and
 important content invariants. Schema validation alone cannot establish that the
 repaired text matches the sender's intent, especially if a field permits null.

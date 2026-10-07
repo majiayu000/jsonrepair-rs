@@ -16,6 +16,11 @@
 - Preserve leading backslashes in unquoted object keys, including UNC paths.
   A failed quoted-string probe previously consumed a backslash before falling
   back to unquoted-key repair.
+- Keep leading regex values and nested wrapper boundaries intact when comment
+  preservation is enabled. Preserve URL `+`, `;` and parentheses without letting
+  an unclosed URL parenthesis consume enclosing JSON structure. Unquoted escape
+  decoding remains independent, including inside URL and wrapper values.
+- Make strict mode take precedence over both content options.
 
 ## 0.2.5 - 2026-09-26
 

@@ -50,7 +50,7 @@ Two independent options address content in malformed tool-call arguments:
 
 | Builder method | Default | Effect when enabled |
 | --- | --- | --- |
-| `with_preserve_comment_markers(true)` | `false` | Disable comment stripping throughout the input and allow slashes in unquoted strings, preserving `#`, `//` and `/* ... */` as content. |
+| `with_preserve_comment_markers(true)` | `false` | Disable comment stripping throughout the input and preserve embedded slashes and `#`, `//` and `/* ... */` content in unquoted strings. An initial single slash still uses regex repair. |
 | `with_decode_unquoted_escapes(true)` | `false` | Interpret complete JSON escapes in unquoted strings, including keys. |
 
 For example, preserve a Markdown heading while keeping backslashes literal:
@@ -96,12 +96,28 @@ the token. Properly quoted strings retain their existing behavior.
 Leave it disabled for literal paths. The parser cannot determine whether an
 unquoted backslash is intended as data or an escape.
 
-Comment preservation disables comment syntax globally, rather than guessing
-which comment was intended as string content. It can change how regex-like
-unquoted values are repaired because slashes become string content. The options
-do not recover arbitrary malformed arguments or enable actual multiline
-unquoted strings: a real line break still ends an unquoted token. Strict mode
-continues to reject input requiring repair.
+Comment preservation disables comment syntax globally. Embedded slashes such as
+`foo/bar` remain content; a value starting with a single slash, such as `/a,b/g`,
+retains the existing regex repair behavior, including inside wrappers.
+
+With preservation enabled, an unquoted value beginning with raw `//` or a
+recognized URL scheme such as `https://` retains URL `+`, `;` and parentheses.
+JSON delimiters and closing quotes still end the URL token when its parentheses
+are unbalanced. Ordinary non-URL text ends the URL-specific delimiter exception;
+with escape decoding enabled, a decoded non-URL character such as `\u0020` also
+ends that exception. Escaped quotes remain token content.
+
+Escape decoding interprets content within an unquoted token; it does not
+reinterpret decoded content as new syntax. In particular, raw `https:\/\/` and
+`\/\/` prefixes do not activate URL recognition. An unquoted
+`{url:https:\/\/example.com/a+b;c}` still returns an error because `+` and `;`
+keep their ordinary delimiter meanings. Use a raw URL prefix or a quoted JSON
+string for that input.
+
+The options do not recover arbitrary malformed arguments or enable actual
+multiline unquoted strings: a real line break still ends an unquoted token.
+Strict mode takes precedence over both options and continues to reject input
+requiring repair with the same behavior as `RepairOptions::strict()`.
 
 ## Supported Helpers
 

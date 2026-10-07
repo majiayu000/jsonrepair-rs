@@ -1,4 +1,4 @@
-use jsonrepair_rs::jsonrepair;
+use jsonrepair_rs::{jsonrepair, jsonrepair_with_options, RepairOptions};
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -864,6 +864,77 @@ fn unquoted_url_as_string() {
         "[https://www.bible.com/,2]",
         r#"["https://www.bible.com/",2]"#,
     );
+}
+
+#[test]
+fn url_parentheses_stop_owning_delimiters_after_non_url_text() {
+    let policy = RepairOptions::new().with_preserve_comment_markers(true);
+    let repaired = jsonrepair_with_options("{url:https://x/a( text,next:2}", policy).unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&repaired).unwrap(),
+        serde_json::json!({"url":"https://x/a( text","next":2})
+    );
+}
+
+#[test]
+fn url_apostrophes_look_ahead_through_json_escapes() {
+    let policy = RepairOptions::new()
+        .with_preserve_comment_markers(true)
+        .with_decode_unquoted_escapes(true);
+    let repaired = jsonrepair_with_options(r"{url:https://x/O'\/path}", policy).unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&repaired).unwrap(),
+        serde_json::json!({"url":"https://x/O'/path"})
+    );
+}
+
+#[test]
+fn url_escape_decoding_does_not_require_comment_preservation() {
+    let policy = RepairOptions::new().with_decode_unquoted_escapes(true);
+    let repaired = jsonrepair_with_options(r"{url:https://example.com/a\/b}", policy).unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&repaired).unwrap(),
+        serde_json::json!({"url":"https://example.com/a/b"})
+    );
+}
+
+#[test]
+fn decoded_url_parentheses_preserve_direct_wrapper_boundaries() {
+    let policy = RepairOptions::new()
+        .with_preserve_comment_markers(true)
+        .with_decode_unquoted_escapes(true);
+    for prefix in ["https://example.com/", "//example.com/"] {
+        for (path, decoded) in [
+            (r"a\u0028b)", "a(b)"),
+            (r"a(b\u0029", "a(b)"),
+            (r"a\u0028b\u0029", "a(b)"),
+            (r"a\u0028(b)\u0029", "a((b))"),
+            (r"a\u0028'b)", "a('b)"),
+        ] {
+            let input = format!("cb({prefix}{path},2)");
+            let repaired = jsonrepair_with_options(&input, policy).unwrap();
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&repaired).unwrap(),
+                serde_json::json!([format!("{prefix}{decoded}"), 2]),
+                "input: {input:?}"
+            );
+            assert_eq!(
+                jsonrepair_with_options(&repaired, policy.with_strict(true)).unwrap(),
+                repaired
+            );
+        }
+        for decode in [false, true] {
+            let repaired = jsonrepair_with_options(
+                &format!("cb({prefix}a((b)),2)"),
+                policy.with_decode_unquoted_escapes(decode),
+            )
+            .unwrap();
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&repaired).unwrap(),
+                serde_json::json!([format!("{prefix}a((b))"), 2])
+            );
+        }
+    }
 }
 
 #[test]

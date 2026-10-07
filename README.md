@@ -214,6 +214,13 @@ cannot be repaired safely, the function returns an error instead of guessing.
 Use [`RepairOptions::strict`](docs/repair-options.md) when callers want valid
 JSON pass-through and an error for repairable non-standard input.
 
+Two independent options handle content in malformed tool arguments:
+`RepairOptions::new().with_preserve_comment_markers(true)` preserves comment-like
+text and embedded slashes, while `.with_decode_unquoted_escapes(true)` interprets
+JSON escapes in unquoted strings and keys. Both default to `false`. Keep escape
+decoding disabled for literal Windows paths. See [repair options](docs/repair-options.md)
+for examples, regex and URL boundaries, and strict-mode precedence.
+
 The reader-to-writer API is streaming-oriented at the IO boundary, but the
 current parser still buffers complete input and repaired output internally. See
 [`docs/streaming-api.md`](docs/streaming-api.md) for the design and memory

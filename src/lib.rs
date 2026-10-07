@@ -69,8 +69,10 @@ impl RepairOptions {
     /// Preserve `#`, `//` and `/* ... */` as content instead of stripping comments.
     ///
     /// Disabled by default. This disables comment parsing throughout the input
-    /// and allows slashes in unquoted strings. It does not enable multiline
-    /// unquoted strings or change escape handling.
+    /// and preserves embedded slashes in unquoted strings. An initial single
+    /// slash still uses regex repair. This does not enable multiline unquoted
+    /// strings or change the independent escape-decoding policy. Strict mode
+    /// takes precedence over both content policies.
     pub fn with_preserve_comment_markers(mut self, preserve: bool) -> Self {
         self.preserve_comment_markers = preserve;
         self
@@ -262,7 +264,12 @@ pub fn jsonrepair_with_options(
     input: &str,
     options: RepairOptions,
 ) -> Result<String, JsonRepairError> {
-    let repairer = parser::JsonRepairer::new(input, options);
+    let parser_options = if options.strict {
+        RepairOptions::strict()
+    } else {
+        options
+    };
+    let repairer = parser::JsonRepairer::new(input, parser_options);
     let repaired = repairer.repair()?;
 
     if options.strict {
