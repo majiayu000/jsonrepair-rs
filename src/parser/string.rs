@@ -417,26 +417,26 @@ impl JsonRepairer {
         }
 
         let mut parenthesis_depth = 0usize;
-        // Named URLs can decode escapes independently of comment preservation.
-        // A leading "//" remains a comment unless preservation is enabled.
         let mut in_url = !is_key
-            && ((self.options.preserve_comment_markers && self.matches_at(start, "//"))
-                || ((self.options.preserve_comment_markers
-                    || self.options.decode_unquoted_escapes)
-                    && self.has_url_scheme_at(start)));
+            && (self.options.preserve_comment_markers || self.options.decode_unquoted_escapes)
+            && (self.has_url_scheme_at(start)
+                || (self.options.preserve_comment_markers && self.matches_at(start, "//")));
         while let Some(c) = self.peek() {
-            if let Some(length) = self.unquoted_json_escape_length() {
+            if let Some(length) = self.unquoted_json_escape_length(self.pos) {
                 // Escaped quotes and slashes belong to the token, not its boundary.
                 // Only decoded URL characters keep the URL delimiter exception.
                 // Rendering below still owns Unicode validation and error positions.
                 if in_url {
-                    let decoded = self.url_char_at(self.pos);
-                    in_url = decoded.is_some();
-                    match decoded {
-                        Some('(') => parenthesis_depth += 1,
-                        Some(')') => parenthesis_depth = parenthesis_depth.saturating_sub(1),
-                        None => parenthesis_depth = 0,
-                        _ => {}
+                    let decoded = self.unquoted_url_char_at(self.pos);
+                    in_url = decoded.is_some_and(chars::is_url_char);
+                    if !in_url {
+                        parenthesis_depth = 0;
+                    } else {
+                        match decoded {
+                            Some('(') => parenthesis_depth += 1,
+                            Some(')') => parenthesis_depth = parenthesis_depth.saturating_sub(1),
+                            _ => {}
+                        }
                     }
                 }
                 self.pos += length;
@@ -446,7 +446,9 @@ impl JsonRepairer {
             let quote_boundary = chars::is_quote(c)
                 && !(in_url
                     && c == '\''
-                    && self.url_char_at(self.pos + 1).is_some()
+                    && self
+                        .unquoted_url_char_at(self.pos + 1)
+                        .is_some_and(chars::is_url_char)
                     && !(is_wrapper_argument
                         && self.peek_at(self.pos + 1) == Some(')')
                         && parenthesis_depth == 0));
@@ -459,6 +461,21 @@ impl JsonRepairer {
                     || quote_boundary)
             {
                 break;
+            }
+
+            if in_url && !chars::is_url_char(c) {
+                if c == '\\' && self.options.decode_unquoted_escapes {
+                    // Incomplete and non-JSON escapes stay literal, even in URLs.
+                    self.pos += 1;
+                    continue;
+                }
+                // The default URL continuation ends before ordinary text,
+                // letting the caller consume whitespace and actual comments.
+                if !self.options.preserve_comment_markers {
+                    break;
+                }
+                in_url = false;
+                parenthesis_depth = 0;
             }
 
             if c == '(' {
@@ -477,11 +494,6 @@ impl JsonRepairer {
             // an initial non-comment slash to the existing regex parser.
             // URL values retain '+' and ';' only while their prefix remains a
             // URL. Do not re-enter this mode after ordinary non-URL content.
-            if in_url && !chars::is_url_char(c) {
-                in_url = false;
-                // Parentheses from the URL cannot hide later JSON boundaries.
-                parenthesis_depth = 0;
-            }
             let starts_regex = !is_key
                 && self.pos == start
                 && c == '/'
@@ -540,7 +552,7 @@ impl JsonRepairer {
             let end = self.pos;
             self.pos = start;
             while self.pos < end {
-                if self.unquoted_json_escape_length().is_some() {
+                if self.unquoted_json_escape_length(self.pos).is_some() {
                     // Reuse quoted-string Unicode validation and error locations.
                     self.parse_string_escape()?;
                 } else {
@@ -559,33 +571,30 @@ impl JsonRepairer {
         Ok(true)
     }
 
-    /// Length of a complete JSON escape at the current unquoted-token position.
+    /// Length of a complete JSON escape at an unquoted-token position.
     /// Non-JSON and incomplete escapes stay literal rather than losing backslashes.
-    fn unquoted_json_escape_length(&self) -> Option<usize> {
-        if !self.options.decode_unquoted_escapes || self.peek() != Some('\\') {
+    fn unquoted_json_escape_length(&self, pos: usize) -> Option<usize> {
+        if !self.options.decode_unquoted_escapes || self.peek_at(pos) != Some('\\') {
             return None;
         }
-        match self.peek_at(self.pos + 1)? {
+        match self.peek_at(pos + 1)? {
             '"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't' => Some(2),
-            'u' if self.hex_quad(self.pos + 2).is_some() => Some(6),
+            'u' if self.hex_quad(pos + 2).is_some() => Some(6),
             _ => None,
         }
     }
 
-    /// Read one URL character, including complete enabled JSON escapes.
-    /// Unicode validation and rendering remain owned by parse_string_escape.
-    fn url_char_at(&self, index: usize) -> Option<char> {
-        let raw = self.peek_at(index)?;
-        let decoded = if raw == '\\' && self.options.decode_unquoted_escapes {
-            match self.peek_at(index + 1)? {
-                '/' => '/',
-                'u' => char::from_u32(u32::from(self.hex_quad(index + 2)?))?,
-                _ => return None,
-            }
-        } else {
-            raw
-        };
-        chars::is_url_char(decoded).then_some(decoded)
+    fn unquoted_url_char_at(&self, pos: usize) -> Option<char> {
+        if self.unquoted_json_escape_length(pos).is_none() {
+            return self.peek_at(pos);
+        }
+        match self.peek_at(pos + 1)? {
+            '/' => Some('/'),
+            'u' => self
+                .hex_quad(pos + 2)
+                .and_then(|unit| char::from_u32(u32::from(unit))),
+            _ => None,
+        }
     }
 
     /// Check if chars starting at `start` look like a URL scheme (no allocation).

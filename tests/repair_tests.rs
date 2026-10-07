@@ -867,6 +867,38 @@ fn unquoted_url_as_string() {
 }
 
 #[test]
+fn url_parentheses_stop_owning_delimiters_after_non_url_text() {
+    let policy = RepairOptions::new().with_preserve_comment_markers(true);
+    let repaired = jsonrepair_with_options("{url:https://x/a( text,next:2}", policy).unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&repaired).unwrap(),
+        serde_json::json!({"url":"https://x/a( text","next":2})
+    );
+}
+
+#[test]
+fn url_apostrophes_look_ahead_through_json_escapes() {
+    let policy = RepairOptions::new()
+        .with_preserve_comment_markers(true)
+        .with_decode_unquoted_escapes(true);
+    let repaired = jsonrepair_with_options(r"{url:https://x/O'\/path}", policy).unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&repaired).unwrap(),
+        serde_json::json!({"url":"https://x/O'/path"})
+    );
+}
+
+#[test]
+fn url_escape_decoding_does_not_require_comment_preservation() {
+    let policy = RepairOptions::new().with_decode_unquoted_escapes(true);
+    let repaired = jsonrepair_with_options(r"{url:https://example.com/a\/b}", policy).unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&repaired).unwrap(),
+        serde_json::json!({"url":"https://example.com/a/b"})
+    );
+}
+
+#[test]
 fn decoded_url_parentheses_preserve_direct_wrapper_boundaries() {
     let policy = RepairOptions::new()
         .with_preserve_comment_markers(true)

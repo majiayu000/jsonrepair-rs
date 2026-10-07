@@ -214,6 +214,10 @@ fn url_parenthesis_depth_ends_with_raw_or_decoded_non_url_text() {
                     if !decode && separator.starts_with('\\') {
                         continue;
                     }
+                    if !preserve && matches!(separator, " " | "\t") {
+                        // Escape decoding does not broaden raw URL whitespace syntax.
+                        continue;
+                    }
                     assert_url_contexts(
                         &format!("{prefix}{opening}{separator}text"),
                         &format!("{prefix}{decoded_opening}{decoded_separator}text"),
@@ -227,11 +231,13 @@ fn url_parenthesis_depth_ends_with_raw_or_decoded_non_url_text() {
             repaired_value("{x:cb(text(a,b),2),next:3}", options(preserve, decode)),
             json!({"x":["text(a,b)",2],"next":3})
         );
-        assert_url_contexts(
-            "https://x/a( text(b,c)",
-            "https://x/a( text(b,c)",
-            options(preserve, decode),
-        );
+        if preserve {
+            assert_url_contexts(
+                "https://x/a( text(b,c)",
+                "https://x/a( text(b,c)",
+                options(preserve, decode),
+            );
+        }
     }
 }
 
@@ -315,5 +321,184 @@ fn decoding_standard_urls_is_independent_of_comment_preservation() {
             &format!("https://x/{suffix}"),
             options(false, true),
         );
+    }
+}
+
+#[test]
+fn decode_only_urls_retain_literal_escapes_and_default_raw_boundaries() {
+    for suffix in [r"a\u12", r"a\uZZZZ", r"a\q/path", r"a\"] {
+        for marker in ["#outside", "//outside", "/*outside*/"] {
+            let input = format!("{{url:https://x/{suffix} {marker}\n,next:2}}");
+            assert_eq!(
+                repaired_value(&input, options(false, true)),
+                json!({"url":format!("https://x/{suffix}"),"next":2})
+            );
+        }
+    }
+    for suffix in ["a( text", "a(\ttext", "a( text(b,c)"] {
+        for input in [
+            format!("{{url:https://x/{suffix},next:2}}"),
+            format!("[https://x/{suffix},2]"),
+            format!("cb(https://x/{suffix})"),
+        ] {
+            let outcome = |decode| {
+                jsonrepair_with_options(&input, options(false, decode))
+                    .map(|s| serde_json::from_str::<Value>(&s).unwrap())
+                    .map_err(|e| (e.kind, e.position))
+            };
+            assert_eq!(outcome(true), outcome(false), "{input}");
+        }
+    }
+}
+
+#[test]
+fn url_and_comment_boundaries_follow_each_policy_combination() {
+    for preserve in [false, true] {
+        for decode in [false, true] {
+            let policy = options(preserve, decode);
+            assert_eq!(
+                repaired_value(r#"{text:word\nline\u0041}"#, policy),
+                json!({"text":if decode { "word\nlineA" } else { r"word\nline\u0041" }})
+            );
+            // Markers inside scheme URLs were already URL content under defaults.
+            for path in [
+                "a#frag", "a//tag", "a/*tag*/", "a+b;c", "O'Reilly", "O'/path", "a('b)", "a((b))",
+            ] {
+                let url = format!("https://x/{path}");
+                assert_eq!(
+                    repaired_value(&format!("{{url:{url},next:2}}"), policy),
+                    json!({"url":url,"next":2})
+                );
+                assert_eq!(
+                    repaired_value(&format!("cb({url},2)"), policy),
+                    json!([url, 2])
+                );
+            }
+            // Leading protocol-relative URLs still obey the comment policy.
+            assert_eq!(
+                repaired_value(r"{url://x/a\/b}", policy),
+                if preserve {
+                    json!({"url":if decode { "//x/a/b" } else { r"//x/a\/b" }})
+                } else {
+                    json!({"url":null})
+                }
+            );
+            for marker in ["/*outside*/", "//outside", "#outside"] {
+                let input = format!("{{url:https://x/a {marker}\n,next:2}}");
+                assert_eq!(
+                    repaired_value(&input, policy),
+                    json!({"url":if preserve { format!("https://x/a {marker}") } else { "https://x/a".to_owned() },"next":2}),
+                    "{input}; preserve={preserve}, decode={decode}"
+                );
+            }
+            let input = r"{url:https://x/a\/b}";
+            if preserve || decode {
+                assert_eq!(
+                    repaired_value(input, policy),
+                    json!({"url":if decode { "https://x/a/b" } else { r"https://x/a\/b" }})
+                );
+            } else {
+                // Keep the existing default URL-continuation error contract.
+                assert_eq!(
+                    jsonrepair_with_options(input, policy).unwrap_err().kind,
+                    JsonRepairErrorKind::ColonExpected
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn url_depth_is_released_by_raw_and_decoded_non_url_characters() {
+    for preserve in [false, true] {
+        for decode in [false, true] {
+            if !preserve && !decode {
+                continue;
+            }
+            let policy = options(preserve, decode);
+            for (suffix, expected) in [
+                ("( text", "( text"),
+                (r"\u0028 text", "( text"),
+                (r"(\u0020text", "( text"),
+                (r#"(\"text"#, "(\"text"),
+            ] {
+                if suffix.contains('\\') && !decode {
+                    continue;
+                }
+                if !preserve && suffix.contains(' ') {
+                    continue;
+                }
+                let url = format!("https://x/a{suffix}");
+                let expected = format!("https://x/a{expected}");
+                assert_eq!(
+                    repaired_value(&format!("{{url:{url},next:2}}"), policy),
+                    json!({"url":expected,"next":2})
+                );
+                assert_eq!(
+                    repaired_value(&format!("cb({url},2)"), policy),
+                    json!([expected, 2])
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn decoded_url_successors_share_apostrophe_and_parenthesis_boundaries() {
+    for preserve in [false, true] {
+        let policy = options(preserve, true);
+        for (path, expected) in [
+            (r"O'\/path", "O'/path"),
+            (r"O'\u002fpath", "O'/path"),
+            (r"O'\u0041path", "O'Apath"),
+            (r"O'\u0028b)", "O'(b)"),
+            (r"O('b\u0029", "O('b)"),
+            (r"O'\u0029", "O')"),
+            (r"a\u0028(b)\u0029", "a((b))"),
+        ] {
+            let url = format!("https://x/{path}");
+            let expected = format!("https://x/{expected}");
+            assert_eq!(
+                repaired_value(&format!("{{url:{url},next:2}}"), policy),
+                json!({"url":expected,"next":2})
+            );
+            assert_eq!(
+                repaired_value(&format!("[{url},2]"), policy),
+                json!([expected, 2])
+            );
+            assert_eq!(
+                repaired_value(&format!("{{x:cb({url},2),next:3}}"), policy),
+                json!({"x":[expected,2],"next":3})
+            );
+        }
+    }
+}
+
+#[test]
+fn url_unicode_validation_keeps_kind_and_offset_under_each_policy() {
+    for preserve in [false, true] {
+        for decode in [false, true] {
+            let policy = options(preserve, decode);
+            for escape in [r"\uD800", r"\uDC00", r"\uD800\u0041"] {
+                let input = format!("{{url:https://x/a{escape}}}");
+                if decode {
+                    let error = jsonrepair_with_options(&input, policy).unwrap_err();
+                    assert_eq!(error.kind, JsonRepairErrorKind::InvalidUnicode);
+                    assert_eq!(error.position, input.find('\\').unwrap());
+                    assert_eq!(error.line, 1);
+                    assert_eq!(error.column, error.position + 1);
+                } else if preserve {
+                    assert_eq!(
+                        repaired_value(&input, policy),
+                        json!({"url":format!("https://x/a{escape}")})
+                    );
+                } else {
+                    assert_eq!(
+                        jsonrepair_with_options(&input, policy).unwrap_err().kind,
+                        JsonRepairErrorKind::ColonExpected
+                    );
+                }
+            }
+        }
     }
 }
