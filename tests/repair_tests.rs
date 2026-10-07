@@ -131,6 +131,11 @@ fn single_quotes_value() {
 }
 
 #[test]
+fn preserves_apostrophe_inside_single_quoted_string() {
+    ok(r#"{"a": 'it's'}"#, r#"{"a": "it's"}"#);
+}
+
+#[test]
 fn curly_double_quotes() {
     ok("\u{201C}hello\u{201D}", r#""hello""#);
 }

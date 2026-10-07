@@ -126,9 +126,13 @@ impl JsonRepairer {
                     return self.parse_string_internal(true, None, is_wrapper_argument);
                 }
 
-                // Not a real closing quote: continue, escaping this quote.
+                // Not a real closing quote: preserve it as string content.
                 self.output.truncate(quote_output_pos);
-                self.output.push_str("\\\"");
+                if c == '"' {
+                    self.output.push_str("\\\"");
+                } else {
+                    self.output.push(c);
+                }
                 self.pos = quote_pos + 1;
             } else if stop_at_delimiter
                 && (chars::is_unquoted_string_delimiter(c)
