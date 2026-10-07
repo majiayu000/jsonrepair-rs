@@ -16,7 +16,8 @@ impl JsonRepairer {
         stop_at_index: Option<usize>,
         is_wrapper_argument: bool,
     ) -> Result<bool> {
-        let skip_escape_chars = self.peek() == Some('\\');
+        let skip_escape_chars =
+            self.peek() == Some('\\') && self.peek_at(self.pos + 1).is_some_and(chars::is_quote);
         if skip_escape_chars {
             // repair escaped string start: \"foo\"
             self.pos += 1;
@@ -417,6 +418,11 @@ impl JsonRepairer {
 
         let mut parenthesis_depth = 0usize;
         while let Some(c) = self.peek() {
+            if let Some(length) = self.unquoted_json_escape_length() {
+                // Escaped quotes and slashes belong to the token, not its boundary.
+                self.pos += length;
+                continue;
+            }
             if c == '(' {
                 parenthesis_depth += 1;
                 self.pos += 1;
@@ -430,7 +436,8 @@ impl JsonRepairer {
             }
 
             if parenthesis_depth == 0
-                && (chars::is_unquoted_string_delimiter(c)
+                && ((chars::is_unquoted_string_delimiter(c)
+                    && !(c == '/' && self.options.preserve_comment_markers))
                     || chars::is_quote(c)
                     || (is_key && matches!(c, ':' | '='))
                     || (is_wrapper_argument && c == ')'))
@@ -477,8 +484,16 @@ impl JsonRepairer {
             self.output.push_str("null");
         } else {
             self.output.push('"');
-            for i in start..self.pos {
-                self.push_string_char(self.chars[i]);
+            let end = self.pos;
+            self.pos = start;
+            while self.pos < end {
+                if self.unquoted_json_escape_length().is_some() {
+                    // Reuse quoted-string Unicode validation and error locations.
+                    self.parse_string_escape()?;
+                } else {
+                    self.push_string_char(self.chars[self.pos]);
+                    self.pos += 1;
+                }
             }
             self.output.push('"');
         }
@@ -489,6 +504,19 @@ impl JsonRepairer {
         }
 
         Ok(true)
+    }
+
+    /// Length of a complete JSON escape at the current unquoted-token position.
+    /// Non-JSON and incomplete escapes stay literal rather than losing backslashes.
+    fn unquoted_json_escape_length(&self) -> Option<usize> {
+        if !self.options.decode_unquoted_escapes || self.peek() != Some('\\') {
+            return None;
+        }
+        match self.peek_at(self.pos + 1)? {
+            '"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't' => Some(2),
+            'u' if self.hex_quad(self.pos + 2).is_some() => Some(6),
+            _ => None,
+        }
     }
 
     /// Check if chars starting at `start` look like a URL scheme (no allocation).

@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Independent `RepairOptions::with_preserve_comment_markers` and
+  `RepairOptions::with_decode_unquoted_escapes` toggles for malformed tool-call
+  content. Both default to false; preserving comment markers alone keeps
+  Windows-path backslashes literal. Neither option enables multiline unquoted
+  strings. Complete unquoted Unicode escapes use the quoted-string surrogate
+  validation and `InvalidUnicode` error contract.
+
+### Fixed
+
+- Preserve leading backslashes in unquoted object keys, including UNC paths.
+  A failed quoted-string probe previously consumed a backslash before falling
+  back to unquoted-key repair.
+
 ## 0.2.5 - 2026-09-26
 
 Release notes suitable for a GitHub Release are also available at

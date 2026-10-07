@@ -56,11 +56,51 @@ show the policy boundary:
 | `{"content": /* Release notes */}` | `{"content": null}` | Preserves `/* Release notes */` as a string |
 | Properly quoted comment-like content | Preserved | Preserved |
 
+The table above describes the earlier fork comparison, not the new opt-in
+upstream policies. Following the
+[OpenBitFun #3229 reply](https://github.com/GCWing/OpenBitFun/issues/3229#issuecomment-6030422809),
+upstream now provides independent `with_preserve_comment_markers(true)` and
+`with_decode_unquoted_escapes(true)` options. Both default to false. The option
+tests cover all four combinations, the reply's escaped Markdown example, and
+literal Windows paths across the string, writer, reader and serde helpers. The
+fork's reported path corruption was not re-run as part of this implementation.
+See [repair options](repair-options.md) for examples and boundaries.
+
+The 11 option regression tests also passed natively on Windows on 2026-10-08
+with Rust 1.99.0 (`x86_64-pc-windows-msvc`), using
+`cargo test --locked --test options_tests --all-features`. This checks the new
+upstream options on Windows, not the downstream fork or the full application.
+
+Expanded native Windows testing on the same date adds nine tests in
+`tests/options_boundary_tests.rs`: literal drive and UNC paths, CRLF, escaped
+token delimiters, quoted control characters, transport prefixes and one-byte
+reader chunks, surrogate-pair boundaries, and long tool content. Generated
+cases cover 25,088 malformed-input/policy combinations and every BMP Unicode
+code unit with escape decoding both enabled and disabled. Successful malformed
+token repairs must parse as JSON and be idempotent; string and writer results
+must agree without writing output on repair errors. Transport-prefix cases also
+check the reader API and chunk boundaries. These finite synthetic cases do not
+establish intent preservation for arbitrary malformed input.
+
+The expanded tests found a pre-existing loss of a leading backslash in unquoted
+object keys, including UNC paths. Quoted-key probing now consumes a backslash
+only when it precedes a quote; the fix is covered across all policy combinations.
+Run the expanded corpus with:
+
+```sh
+cargo test --locked --test options_boundary_tests --all-features -- --nocapture
+```
+
+After the key fix, the complete native Windows suite passed with 278 tests under
+default features and 294 under all features, plus one all-feature doctest and
+`cargo check --locked --all-targets --all-features`. The same source passed the
+macOS suite, formatting, warning-denying compilation, Clippy, documentation,
+package verification, and the Rust 1.70 core library/CLI check.
+
 Disabling comment parsing does not guarantee recovery of every comment-like
 unquoted value. Do not advertise universal content preservation for either
-profile. Default comment behavior is unchanged by this regression work. Any
-future content-oriented policy should be explicitly opt-in, tested independently
-for all three markers, and keep the historical configuration-file behavior.
+profile. Default comment behavior remains unchanged. Actual multiline unquoted
+strings remain a separate issue; neither option enables them.
 
 Before executing repaired tool arguments, check both the application schema and
 important content invariants. Schema validation alone cannot establish that the

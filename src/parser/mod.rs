@@ -2,6 +2,7 @@ use std::fmt::Write;
 
 use crate::chars;
 use crate::error::{JsonRepairError, JsonRepairErrorKind};
+use crate::RepairOptions;
 
 pub(crate) type Result<T> = std::result::Result<T, JsonRepairError>;
 
@@ -24,10 +25,11 @@ pub struct JsonRepairer {
     pub(super) output: String,
     pub(super) depth: usize,
     pub(super) in_object: bool,
+    pub(super) options: RepairOptions,
 }
 
 impl JsonRepairer {
-    pub fn new(input: &str) -> Self {
+    pub fn new(input: &str, options: RepairOptions) -> Self {
         let input = chars::strip_bom(input);
         Self {
             chars: input.chars().collect(),
@@ -35,6 +37,7 @@ impl JsonRepairer {
             output: String::with_capacity(input.len()),
             depth: 0,
             in_object: false,
+            options,
         }
     }
 
@@ -156,6 +159,10 @@ impl JsonRepairer {
                     }
                     _ => break,
                 }
+            }
+
+            if self.options.preserve_comment_markers {
+                break;
             }
 
             if self.peek() == Some('/') {
