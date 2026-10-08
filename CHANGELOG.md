@@ -1,8 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.2.6 - Unreleased
 
 ### Added
+
+- `RepairOptions::with_max_input_bytes` across options helpers, an
+  `InputTooLarge` repair classification and
+  `JsonRepairStreamError::InputTooLarge { limit }`. Reader limits use one byte
+  of lookahead, reject excess input before repair and never call the writer on
+  oversize input. Defaults remain unlimited.
+- Runnable completed-tool-argument example, input-budget contract tests and
+  [prepared 0.2.6 release notes](docs/releases/v0.2.6.md).
 
 - Independent `RepairOptions::with_preserve_comment_markers` and
   `RepairOptions::with_decode_unquoted_escapes` toggles for malformed tool-call

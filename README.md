@@ -50,8 +50,8 @@ OpenBitFun comment policy.
   fixtures.
 - The output is valid JSON when an API returns `Ok(...)`; unrecoverable input
   returns a typed error instead of a guessed repair.
-- The reader-to-writer API is streaming-oriented at the IO boundary, but the
-  current parser still buffers internally. See [`docs/streaming-api.md`](docs/streaming-api.md).
+- The reader-to-writer API fully buffers input and repaired output; it does not
+  incrementally parse JSON. See [`docs/streaming-api.md`](docs/streaming-api.md).
 - The optional `serde` helper can correct a small set of schema-guided value
   mismatches. It does not validate JSON Schema; validate its result before use.
 - See [`FEATURE_PARITY.md`](FEATURE_PARITY.md) for a side-by-side comparison
@@ -68,7 +68,7 @@ Or add it manually:
 
 ```toml
 [dependencies]
-jsonrepair-rs = "0.2.5"
+jsonrepair-rs = "0.2.6"
 ```
 
 Minimum supported Rust version for the core library and CLI: 1.70. The optional
@@ -193,7 +193,7 @@ pub fn jsonrepair_parse_with_options<T>(input: &str, options: RepairOptions) -> 
 | `jsonrepair_to_writer(input, writer)` | default | writes repaired JSON to `std::io::Write` | `JsonRepairWriteError::Repair` or `JsonRepairWriteError::Write` |
 | `jsonrepair_to_writer_with_options(input, writer, options)` | default | writes with explicit policy | `JsonRepairWriteError::Repair` or `JsonRepairWriteError::Write` |
 | `jsonrepair_reader_to_writer(reader, writer)` | default | reads from `std::io::Read`, writes to `std::io::Write` | `JsonRepairStreamError::Read`, `Repair`, or `Write` |
-| `jsonrepair_reader_to_writer_with_options(reader, writer, options)` | default | streams with explicit policy | `JsonRepairStreamError::Read`, `Repair`, or `Write` |
+| `jsonrepair_reader_to_writer_with_options(reader, writer, options)` | default | buffers with explicit policy | `JsonRepairStreamError::Read`, `InputTooLarge`, `Repair`, or `Write` |
 | `jsonrepair_value(input)` | `serde` | repaired `serde_json::Value` | `JsonRepairParseError::Repair` or `JsonRepairParseError::Parse` |
 | `jsonrepair_value_with_options(input, options)` | `serde` | repaired `serde_json::Value` with explicit policy | `JsonRepairParseError::Repair` or `JsonRepairParseError::Parse` |
 | `jsonrepair_value_with_schema(input, schema)` | `serde` | repaired value with supported schema corrections | `JsonRepairParseError::Repair` or `JsonRepairParseError::Parse` |
@@ -221,8 +221,16 @@ JSON escapes in unquoted strings and keys. Both default to `false`. Keep escape
 decoding disabled for literal Windows paths. See [repair options](docs/repair-options.md)
 for examples, regex and URL boundaries, and strict-mode precedence.
 
-The reader-to-writer API is streaming-oriented at the IO boundary, but the
-current parser still buffers complete input and repaired output internally. See
+Set `.with_max_input_bytes(limit)` on any options helper to reject oversized
+input before repair. Bounded readers consume at most `limit + 1` bytes and return
+`JsonRepairStreamError::InputTooLarge { limit }` without calling the writer.
+String, writer and serde options helpers report `JsonRepairErrorKind::InputTooLarge`
+through their existing repair-error wrappers. Defaults remain unlimited. See
+[the options contract](docs/repair-options.md) and the runnable
+[`tool_arguments` example](examples/tool_arguments.rs).
+
+The reader-to-writer API fully buffers input and repaired output and waits for
+EOF on accepted input. It does not incrementally parse or emit JSON. See
 [`docs/streaming-api.md`](docs/streaming-api.md) for the design and memory
 tradeoffs.
 

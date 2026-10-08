@@ -1,4 +1,4 @@
-# Streaming API Design
+# Buffered Reader/Writer API
 
 ## Goal
 
@@ -56,16 +56,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Error Model
 
-`JsonRepairStreamError` separates the three failure classes:
+`JsonRepairStreamError` separates these failure classes:
 
 - `Read(std::io::Error)` when the source cannot be read as UTF-8 text.
+- `InputTooLarge { limit }` when a configured input byte limit is exceeded.
 - `Repair(JsonRepairError)` when the input cannot be repaired safely.
 - `Write(std::io::Error)` when the destination cannot be written.
 
 ## Memory Behavior
 
-The current implementation is streaming-oriented at the API boundary, but it
-is not a constant-memory streaming parser.
+The reader/writer interface fully buffers accepted input and repaired output.
+It does not incrementally parse or emit JSON.
 
 Current behavior:
 
@@ -78,14 +79,17 @@ This keeps behavior identical to `jsonrepair(input)` and avoids exposing a
 partially repaired output on repair failure. It also means peak memory is still
 proportional to input size plus repaired output size, including the parser's
 additional character buffer (four bytes per Unicode scalar value, before
-capacity overhead). The nesting limit does not impose an input-byte limit.
+capacity overhead). Use `RepairOptions::with_max_input_bytes` for an input-byte
+limit; the nesting limit alone does not impose one.
 
 The reader must reach EOF before repair begins. Bound input size and read time
-when using an untrusted source. If applying a byte limit, detect and reject
-over-limit input; silently truncating the reader can produce a successful repair
-of an incomplete payload.
+when using an untrusted source. Use `jsonrepair_reader_to_writer_with_options` with
+`RepairOptions::new().with_max_input_bytes(limit)`: it reads at most `limit + 1`
+bytes and rejects excess input with `InputTooLarge { limit }`. It never repairs
+a silently truncated prefix. Input and output remain fully buffered; a byte
+budget does not provide a deadline or a total-memory cap.
 
-Read and repair errors do not write to the destination, but `Write` errors can
+Byte-limit, read and repair errors do not call the writer, but `Write` errors can
 leave partially written output. These helpers do not provide transactional file
 replacement. Use a temporary destination and replace the target after successful
 completion if partial writes would be harmful.

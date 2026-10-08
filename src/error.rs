@@ -4,6 +4,8 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum JsonRepairErrorKind {
+    /// Input exceeded the configured byte limit before parsing.
+    InputTooLarge,
     /// Input ended unexpectedly.
     UnexpectedEnd,
     /// Encountered an unexpected character.

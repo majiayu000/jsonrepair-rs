@@ -42,6 +42,7 @@ pub struct RepairOptions {
     strict: bool,
     preserve_comment_markers: bool,
     decode_unquoted_escapes: bool,
+    max_input_bytes: Option<usize>,
 }
 
 impl RepairOptions {
@@ -53,6 +54,17 @@ impl RepairOptions {
     /// Return an options value that rejects any input requiring repair.
     pub fn strict() -> Self {
         Self::default().with_strict(true)
+    }
+
+    /// Set an input byte limit (including whitespace and a UTF-8 BOM).
+    ///
+    /// Reader helpers consume at most `limit + 1` bytes to detect excess input.
+    /// Oversized input is rejected before parsing or calling the writer.
+    /// Defaults to no byte limit. This does not bound total parser memory or
+    /// read time; callers must provide reader deadlines separately.
+    pub fn with_max_input_bytes(mut self, limit: usize) -> Self {
+        self.max_input_bytes = Some(limit);
+        self
     }
 
     /// Enable or disable strict mode.
@@ -138,6 +150,8 @@ impl From<std::io::Error> for JsonRepairWriteError {
 pub enum JsonRepairStreamError {
     /// The input stream could not be read as UTF-8 text.
     Read(std::io::Error),
+    /// The reader exceeded its configured input byte limit. No writer was called.
+    InputTooLarge { limit: usize },
     /// The input could not be repaired safely.
     Repair(JsonRepairError),
     /// The repaired JSON could not be written to the destination.
@@ -148,6 +162,7 @@ impl std::fmt::Display for JsonRepairStreamError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Read(err) => write!(f, "failed to read JSON input: {err}"),
+            Self::InputTooLarge { limit } => write!(f, "JSON input exceeds {limit} bytes"),
             Self::Repair(err) => err.fmt(f),
             Self::Write(err) => write!(f, "failed to write repaired JSON: {err}"),
         }
@@ -158,6 +173,7 @@ impl std::error::Error for JsonRepairStreamError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Read(err) => Some(err),
+            Self::InputTooLarge { .. } => None,
             Self::Repair(err) => Some(err),
             Self::Write(err) => Some(err),
         }
@@ -176,6 +192,9 @@ where
 }
 
 /// Repair a broken JSON string using options and write the valid JSON to a writer.
+///
+/// The complete repaired output is buffered before writing. Repair and byte
+/// limit errors do not call the writer; write errors can leave partial output.
 pub fn jsonrepair_to_writer_with_options<W>(
     input: &str,
     writer: &mut W,
@@ -191,11 +210,10 @@ where
 
 /// Repair JSON-like text from a reader and write valid JSON to a writer.
 ///
-/// This is the first streaming-oriented API surface: callers can connect files,
-/// stdin, stdout, sockets, or buffers without receiving an owned repaired
-/// [`String`]. The current parser still needs the complete input and repaired
-/// output buffered inside the crate before writing; this preserves exact repair
-/// behavior while leaving room for a future lower-memory parser.
+/// This is a fully buffered IO convenience API, not incremental parsing.
+/// It reads to EOF, buffers complete input and repaired output, then writes.
+/// Read and repair errors do not call the writer. Write errors can leave partial
+/// output; this helper does not provide atomic destination replacement.
 pub fn jsonrepair_reader_to_writer<R, W>(
     mut reader: R,
     writer: &mut W,
@@ -208,6 +226,12 @@ where
 }
 
 /// Repair JSON-like text from a reader using options and write valid JSON to a writer.
+///
+/// Fully buffers input and output. With an input byte limit, reads at most
+/// `limit + 1` bytes and rejects excess input without calling the writer.
+/// Excess bytes take precedence over UTF-8 validation of the bounded buffer.
+/// Read and repair errors also leave the writer untouched; write failures may
+/// leave partial output. A byte limit does not impose a read timeout.
 pub fn jsonrepair_reader_to_writer_with_options<R, W>(
     mut reader: R,
     writer: &mut W,
@@ -217,13 +241,27 @@ where
     R: std::io::Read,
     W: std::io::Write + ?Sized,
 {
-    let mut input = String::new();
-    reader
-        .read_to_string(&mut input)
-        .map_err(JsonRepairStreamError::Read)?;
+    let input = if let Some(limit) = options.max_input_bytes {
+        use std::io::Read;
+        let mut bytes = Vec::new();
+        std::io::Read::take(&mut reader, (limit as u64).saturating_add(1))
+            .read_to_end(&mut bytes)
+            .map_err(JsonRepairStreamError::Read)?;
+        if bytes.len() > limit {
+            return Err(JsonRepairStreamError::InputTooLarge { limit });
+        }
+        String::from_utf8(bytes).map_err(|err| {
+            JsonRepairStreamError::Read(std::io::Error::new(std::io::ErrorKind::InvalidData, err))
+        })?
+    } else {
+        let mut input = String::new();
+        reader
+            .read_to_string(&mut input)
+            .map_err(JsonRepairStreamError::Read)?;
+        input
+    };
 
-    let repaired =
-        jsonrepair_with_options(&input, options).map_err(JsonRepairStreamError::Repair)?;
+    let repaired = repair_with_options(&input, options).map_err(JsonRepairStreamError::Repair)?;
     writer
         .write_all(repaired.as_bytes())
         .map_err(JsonRepairStreamError::Write)?;
@@ -260,10 +298,25 @@ pub fn jsonrepair(input: &str) -> Result<String, JsonRepairError> {
 /// With default options, this behaves exactly like [`jsonrepair`]. With
 /// [`RepairOptions::strict`], valid JSON is returned unchanged and any input
 /// that would require repair returns [`JsonRepairErrorKind::StrictModeViolation`].
+/// A configured byte limit is checked before parsing and returns
+/// [`JsonRepairErrorKind::InputTooLarge`].
 pub fn jsonrepair_with_options(
     input: &str,
     options: RepairOptions,
 ) -> Result<String, JsonRepairError> {
+    if let Some(limit) = options.max_input_bytes {
+        if input.len() > limit {
+            return Err(JsonRepairError::with_kind(
+                format!("JSON input exceeds {limit} bytes"),
+                0,
+                JsonRepairErrorKind::InputTooLarge,
+            ));
+        }
+    }
+    repair_with_options(input, options)
+}
+
+fn repair_with_options(input: &str, options: RepairOptions) -> Result<String, JsonRepairError> {
     let parser_options = if options.strict {
         RepairOptions::strict()
     } else {
