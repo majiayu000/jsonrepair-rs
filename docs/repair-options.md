@@ -147,3 +147,23 @@ Candidate toggles include:
 
 Those toggles should be added only when each policy has representative tests and
 clear default compatibility behavior.
+
+## Input byte budget
+
+Set `RepairOptions::new().with_max_input_bytes(1024 * 1024)` (or combine it with
+the independent content options) to reject oversized input. Defaults remain
+unlimited.
+
+The limit counts UTF-8 bytes, including whitespace and a BOM, before repair.
+String/writer/serde helpers return `JsonRepairErrorKind::InputTooLarge` through
+their existing repair-error wrappers. Reader helpers return
+`JsonRepairStreamError::InputTooLarge { limit }` and read at most `limit + 1`
+bytes. They reject excess input instead of repairing a truncated prefix. Zero
+is supported; an empty input still fails repair. The maximum `usize` limit does
+not overflow the lookahead calculation.
+
+No writer is called on byte-limit, read, or repair errors. A write error can
+leave partial output. The reader still buffers the complete input and repaired
+output and waits for EOF for an accepted input; the limit bounds input bytes,
+not total memory or read time. Invalid UTF-8 below the limit is a `Read` error;
+an oversized bounded buffer returns the byte-limit error before UTF-8 checking.

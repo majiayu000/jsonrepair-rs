@@ -126,10 +126,11 @@ repairing, even if it has already delivered a complete JSON value.
 Input bytes, the parser's `Vec<char>`, and repaired output can coexist. The
 parser's character storage alone uses four bytes per Unicode scalar value,
 excluding capacity overhead. With `serde` helpers, the parsed value adds further
-allocations. A nesting limit is not a byte or memory limit. Enforce an input-byte
-budget before calling repair; for a stream, read at most `limit + 1` bytes and
-reject over-limit input rather than repairing a silently truncated `take(limit)`
-prefix. Apply timeouts to untrusted or potentially unending readers as well.
+allocations. A nesting limit is not a byte or memory limit. Configure
+`RepairOptions::with_max_input_bytes` for an input byte budget.
+Readers consume at most `limit + 1` bytes and reject excess input rather than
+repairing a silently truncated `take(limit)` prefix. Apply timeouts to untrusted
+or potentially unending readers as well.
 
 Read and repair failures happen before any writer calls. A write failure can
 leave a prefix in the destination; use a temporary file and replace the target
@@ -160,3 +161,18 @@ repaired output, writer parity, and reader chunks of one through five bytes
 Separate cases assert read-failure output isolation, possible partial writes,
 and schema-helper limits. Chunk equivalence is a behavior test, not a
 constant-memory measurement.
+
+## Bounded completed-argument integration
+
+The runnable `examples/tool_arguments.rs` uses the existing independent content
+options plus `with_max_input_bytes`. It follows OpenBitFun's completed-string
+repair call shape, then strictly parses the candidate. The tool owner must still
+validate its schema and important content. For wecom-cli, a limit on the upstream
+candidate cannot bound its earlier strict-parse or candidate-enumeration work;
+its owner must apply a budget at that pipeline's input boundary too.
+
+This is a synthetic integration example, not a downstream application migration.
+The content/escape options were already delivered in PRs #84–#86; this change
+adds the missing byte budget without replacing those parser changes. The old
+standalone fork comparison does not prove every current fork difference is
+removed. Full downstream replacement and production acceptance remain unverified.

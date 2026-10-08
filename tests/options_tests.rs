@@ -229,3 +229,26 @@ fn strict_mode_is_available_for_writer_helpers() {
     ));
     assert!(output.is_empty());
 }
+
+#[test]
+fn string_byte_limit_precedes_repair_and_writer_calls() {
+    let input = "{text:'中'}";
+    let options = RepairOptions::new().with_max_input_bytes(input.len());
+    assert!(jsonrepair_with_options(input, options).is_ok());
+    let mut writer = Vec::new();
+    let err = jsonrepair_to_writer_with_options(
+        input,
+        &mut writer,
+        RepairOptions::new().with_max_input_bytes(input.len() - 1),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(err, jsonrepair_rs::JsonRepairWriteError::Repair(err)
+        if err.kind == JsonRepairErrorKind::InputTooLarge)
+    );
+    assert!(writer.is_empty());
+    assert!(jsonrepair_with_options("0", RepairOptions::new().with_max_input_bytes(0)).is_err());
+    assert!(
+        jsonrepair_with_options("0", RepairOptions::new().with_max_input_bytes(usize::MAX)).is_ok()
+    );
+}
