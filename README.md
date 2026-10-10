@@ -31,8 +31,8 @@ compatibility goals against the JavaScript `jsonrepair` and Python
 - [wecom-cli](https://github.com/WecomTeam/wecom-cli/blob/main/crates/wecom/Cargo.toml)
   depends on `jsonrepair-rs` and considers its output alongside another repair
   candidate for CLI-supplied JSON.
-- [OpenBitFun](https://github.com/GCWing/OpenBitFun/blob/main/src/crates/execution/tool-call-jsonrepair/README.md)
-  uses a local fork of `jsonrepair-rs` 0.2.1 for streamed tool-call arguments.
+- [OpenBitFun](https://github.com/GCWing/OpenBitFun/blob/23211519706a7c8349a9c8c59dbc7151bd998896/src/crates/execution/tool-call-jsonrepair/README.md)
+  uses a local fork of `jsonrepair-rs` 0.2.5 for streamed tool-call arguments.
   Its tool-call profile disables parsing of `#`, `//`, and `/* ... */` as
   comments; recovery can differ from upstream and can still fail.
 - [OpenFlow](https://github.com/philbotar/OpenFlow/blob/main/crates/providers/src/mapping/mod.rs)
