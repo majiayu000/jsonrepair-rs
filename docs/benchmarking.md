@@ -1,7 +1,10 @@
 # Benchmarking
 
-`jsonrepair-rs` keeps two benchmark surfaces:
+`jsonrepair-rs` keeps these benchmark surfaces:
 
+- `scripts/memory_report.py` for macOS whole-process peak RSS and elapsed time
+  across public synthetic and amplified downstream regression shapes (see the
+  [2026-10-15 measurement](reports/memory-20261015.md)).
 - Criterion benchmarks in `benches/benchmark.rs` for Rust-level parser timing.
 - `scripts/benchmark_report.py` for CLI-level latency and throughput reports
   against Python `json-repair` and optional CLI competitors.

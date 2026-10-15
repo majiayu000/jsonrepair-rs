@@ -31,17 +31,18 @@ compatibility goals against the JavaScript `jsonrepair` and Python
 - [wecom-cli](https://github.com/WecomTeam/wecom-cli/blob/main/crates/wecom/Cargo.toml)
   depends on `jsonrepair-rs` and considers its output alongside another repair
   candidate for CLI-supplied JSON.
-- [OpenBitFun](https://github.com/GCWing/OpenBitFun/blob/23211519706a7c8349a9c8c59dbc7151bd998896/src/crates/execution/tool-call-jsonrepair/README.md)
-  uses a local fork of `jsonrepair-rs` 0.2.5 for streamed tool-call arguments.
-  Its tool-call profile disables parsing of `#`, `//`, and `/* ... */` as
-  comments; recovery can differ from upstream and can still fail.
+- [OpenBitFun](https://github.com/GCWing/OpenBitFun/blob/3145662201e1ec64adcf01ac2f5badb2d8a4c6a3/Cargo.toml#L99)
+  declares the crates.io `0.2.6` dependency in its public main snapshot checked
+  on 2026-10-15; its agent-stream crate uses that workspace dependency. It
+  previously carried a local fork for tool-call content policies. The downstream
+  maintainer [reported 66 isolated integration tests passing](https://github.com/GCWing/OpenBitFun/issues/3229#issuecomment-6061424116)
+  against upstream revision `aab8317`; that is their report, not a test run here.
 - [OpenFlow](https://github.com/philbotar/OpenFlow/blob/main/crates/providers/src/mapping/mod.rs)
   uses `jsonrepair` after strict parsing fails for object/array-shaped tool
   arguments, then parses the repaired output again.
 
 See [downstream compatibility boundaries](docs/downstream-compatibility.md) for
-verified call sites, synthetic regression coverage, and differences from the
-OpenBitFun comment policy.
+verified call sites, synthetic regression coverage, and content-policy limits.
 
 ## Trust And Limits
 
