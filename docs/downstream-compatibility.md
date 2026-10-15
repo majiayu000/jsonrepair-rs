@@ -2,7 +2,9 @@
 
 ## Scope and provenance
 
-Checked against public source on 2026-10-05. The regression cases in
+OpenBitFun dependency evidence was refreshed from public source on 2026-10-15;
+the wecom-cli and OpenFlow snapshots below were checked on 2026-10-05.
+The regression cases in
 `tests/downstream_contract_tests.rs` are newly written synthetic examples based
 on the shapes handled at these call sites, not captured user payloads or copied
 downstream test suites. They exercise this crate's public APIs, not the full
@@ -25,12 +27,20 @@ implied.
   Tests here cover incomplete paths, arrays, Unicode text and a trailing comma
   in a tool-result envelope. Application-level shape checks and repair admission
   remain OpenFlow's responsibility; this library also accepts scalar strings.
-- **OpenBitFun** at
-  [`18aa544`](https://github.com/GCWing/OpenBitFun/blob/18aa5441d89f5e24cfb4d8ff54d4b53d92c68896/src/crates/execution/tool-call-jsonrepair/README.md):
-  a local MIT-licensed fork of `0.2.1`, called through `repair_tool_call_json` by
-  its streamed tool-call accumulator. Its profile disables comment parsing.
-  This is a different policy from upstream's generic repair API, not evidence
-  that replacing the fork with upstream is drop-in compatible.
+- **OpenBitFun** now declares the crates.io `jsonrepair-rs` version requirement
+  `0.2.6`, with default features disabled, in its
+  [workspace manifest at `3145662`](https://github.com/GCWing/OpenBitFun/blob/3145662201e1ec64adcf01ac2f5badb2d8a4c6a3/Cargo.toml#L99).
+  Its [agent-stream manifest](https://github.com/GCWing/OpenBitFun/blob/3145662201e1ec64adcf01ac2f5badb2d8a4c6a3/src/crates/execution/agent-stream/Cargo.toml#L18)
+  uses the workspace dependency. These pinned public-main manifests were checked
+  on 2026-10-15; the requirement is not an exact version pin or production
+  deployment receipt. The earlier
+  [fork at `18aa544`](https://github.com/GCWing/OpenBitFun/blob/18aa5441d89f5e24cfb4d8ff54d4b53d92c68896/src/crates/execution/tool-call-jsonrepair/README.md)
+  is historical context for the comparison below, not the current dependency.
+  The downstream maintainer [reported](https://github.com/GCWing/OpenBitFun/issues/3229#issuecomment-6061424116)
+  that all 66 isolated agent-stream integration tests passed after substituting
+  upstream `aab8317de132915d94da9ec980cec4b362758884`, including synthetic
+  Markdown, escapes and Windows-path cases. We did not run that downstream
+  suite; the report and manifest migration do not establish production acceptance.
 
 ## Comments: syntax repair can lose intended content
 
@@ -43,13 +53,13 @@ For example, the malformed input `{"content": # Release notes"}` repairs to
 an accident, the intended Markdown has been lost even though the output is
 valid JSON. Strict mode rejects the input; it does not recover the text.
 
-A small independent core-library comparison used current upstream `5786580`,
-upstream tag `v0.2.1`, and the OpenBitFun fork at the commit above. All three were
+A historical independent core-library comparison used upstream `5786580`,
+upstream tag `v0.2.1`, and the historical OpenBitFun fork at `18aa544`. All three were
 compiled directly from their Rust library source without optional features;
 this was not a downstream workspace build. The following synthetic examples
 show the policy boundary:
 
-| Input | Upstream 0.2.1 and current main | OpenBitFun tool profile |
+| Input | Upstream 0.2.1 and `5786580` (default) | Historical OpenBitFun tool profile |
 | --- | --- | --- |
 | `{"content": # Release notes"}` | `{"content": null}` | Preserves `# Release notes` as a string |
 | `{"content": // Release notes"}` | `{"content": null}` | Returns `ColonExpected` |
@@ -59,7 +69,7 @@ show the policy boundary:
 The table above describes the earlier fork comparison, not the new opt-in
 upstream policies. Following the
 [OpenBitFun #3229 reply](https://github.com/GCWing/OpenBitFun/issues/3229#issuecomment-6030422809),
-upstream now provides independent `with_preserve_comment_markers(true)` and
+upstream 0.2.6 provides independent `with_preserve_comment_markers(true)` and
 `with_decode_unquoted_escapes(true)` options. Both default to false. The option
 tests cover all four combinations, the reply's escaped Markdown example, and
 literal Windows paths across the string, writer, reader and serde helpers. The
@@ -115,6 +125,11 @@ Before executing repaired tool arguments, check both the application schema and
 important content invariants. Schema validation alone cannot establish that the
 repaired text matches the sender's intent, especially if a field permits null.
 
+The CI workflow is configured to run the existing options, option-boundary,
+comment-policy and bounded-input suites on `windows-latest` with all features.
+The new job awaits its first CI run; the historical native results above are
+separate from that pending verification.
+
 ## Completion and resource boundaries
 
 Repairing a transport prefix can produce plausible but premature JSON. Wait for
@@ -126,7 +141,10 @@ repairing, even if it has already delivered a complete JSON value.
 Input bytes, the parser's `Vec<char>`, and repaired output can coexist. The
 parser's character storage alone uses four bytes per Unicode scalar value,
 excluding capacity overhead. With `serde` helpers, the parsed value adds further
-allocations. A nesting limit is not a byte or memory limit. Configure
+allocations. See the [macOS memory measurement](reports/memory-20261015.md) for
+measured scaling on public synthetic reproductions and amplified regression
+shapes, not production payloads. A nesting limit is not a byte or memory limit.
+Configure
 `RepairOptions::with_max_input_bytes` for an input byte budget.
 Readers consume at most `limit + 1` bytes and reject excess input rather than
 repairing a silently truncated `take(limit)` prefix. Apply timeouts to untrusted
@@ -175,4 +193,5 @@ This is a synthetic integration example, not a downstream application migration.
 The content/escape options were already delivered in PRs #84–#86; this change
 adds the missing byte budget without replacing those parser changes. The old
 standalone fork comparison does not prove every current fork difference is
-removed. Full downstream replacement and production acceptance remain unverified.
+removed. The public dependency migration and downstream-reported integration
+result are recorded above; production acceptance remains unverified.
