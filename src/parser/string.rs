@@ -314,8 +314,11 @@ impl JsonRepairer {
                 self.pos += 1;
             }
             '\n' | '\r' => {
-                // Line continuation: drop it.
+                // Line continuation: CRLF is one line ending, not content.
                 self.pos += 1;
+                if esc == '\r' && self.peek() == Some('\n') {
+                    self.pos += 1;
+                }
             }
             _ => {
                 // Invalid escape: drop '\' and keep char.
