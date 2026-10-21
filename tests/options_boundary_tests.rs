@@ -345,3 +345,49 @@ fn generated_malformed_tokens_keep_successful_output_valid() {
     }
     println!("checked {count} generated malformed-input/policy combinations");
 }
+
+#[test]
+fn quoted_line_continuations_drop_complete_line_endings() {
+    for newline in ["\n", "\r", "\r\n"] {
+        for quote in ['"', '\'', '`'] {
+            let scalar = format!("{quote}hello\\{newline}world{quote}");
+            let object = format!("{{{quote}hel\\{newline}lo{quote}: {scalar}}}");
+            for preserve in [false, true] {
+                for decode in [false, true] {
+                    let policy = options(preserve, decode);
+                    assert_eq!(
+                        check_result(&scalar, policy, &[1, 2, 3]),
+                        Some(json!("helloworld"))
+                    );
+                    assert_eq!(
+                        check_result(&object, policy, &[1, 2, 3]),
+                        Some(json!({"hello": "helloworld"}))
+                    );
+                    let error =
+                        jsonrepair_with_options(&scalar, policy.with_strict(true)).unwrap_err();
+                    assert_eq!(error.kind, JsonRepairErrorKind::StrictModeViolation);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn line_continuation_preserves_adjacent_content() {
+    for (input, expected) in [
+        ("\"hello\\\r\n\nworld\"", "hello\nworld"),
+        ("\"hello\\\r\r\nworld\"", "hello\r\nworld"),
+        ("\"hello\\\\\r\nworld\"", "hello\\\r\nworld"),
+        ("\"hello\r\nworld\"", "hello\r\nworld"),
+        (r#""hello\r\nworld""#, "hello\r\nworld"),
+    ] {
+        for preserve in [false, true] {
+            for decode in [false, true] {
+                assert_eq!(
+                    check_result(input, options(preserve, decode), &[1, 2, 3]),
+                    Some(json!(expected))
+                );
+            }
+        }
+    }
+}
