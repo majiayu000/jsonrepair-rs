@@ -132,6 +132,29 @@ impl Args {
     }
 }
 
+#[cfg(unix)]
+fn parse_output_equals(arg: &OsStr) -> Option<OsString> {
+    use std::os::unix::ffi::OsStrExt;
+
+    arg.as_bytes()
+        .strip_prefix(b"--output=")
+        .map(|path| OsStr::from_bytes(path).to_os_string())
+}
+
+#[cfg(windows)]
+fn parse_output_equals(arg: &OsStr) -> Option<OsString> {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
+    let mut units = arg.encode_wide();
+    for expected in "--output=".encode_utf16() {
+        if units.next() != Some(expected) {
+            return None;
+        }
+    }
+    Some(OsString::from_wide(&units.collect::<Vec<_>>()))
+}
+
+#[cfg(not(any(unix, windows)))]
 fn parse_output_equals(arg: &OsStr) -> Option<OsString> {
     let arg = arg.to_str()?;
     arg.strip_prefix("--output=").map(OsString::from)
@@ -166,5 +189,34 @@ impl fmt::Display for CliError {
 impl From<JsonRepairStreamError> for CliError {
     fn from(err: JsonRepairStreamError) -> Self {
         Self::Repair(err)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn output_equals_preserves_unicode_empty_and_equals_paths() {
+        for path in ["", "目录/🦀=report.json", "-report.json"] {
+            let argument = OsString::from(format!("--output={path}"));
+            assert_eq!(parse_output_equals(&argument), Some(OsString::from(path)));
+        }
+        for argument in ["--output", "--outputs=x", "x--output=y"] {
+            assert_eq!(parse_output_equals(OsStr::new(argument)), None);
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn output_equals_preserves_unpaired_utf16_surrogates() {
+        use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
+        for suffix in [vec![0xD800, 0x0061], vec![0xDC00, 0x003D, 0xDFFF]] {
+            let mut argument: Vec<_> = "--output=".encode_utf16().collect();
+            argument.extend_from_slice(&suffix);
+            let parsed = parse_output_equals(&OsString::from_wide(&argument)).unwrap();
+            assert_eq!(parsed.encode_wide().collect::<Vec<_>>(), suffix);
+        }
     }
 }
