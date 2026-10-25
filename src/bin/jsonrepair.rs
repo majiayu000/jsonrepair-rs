@@ -132,6 +132,29 @@ impl Args {
     }
 }
 
+#[cfg(unix)]
+fn parse_output_equals(arg: &OsStr) -> Option<OsString> {
+    use std::os::unix::ffi::OsStrExt;
+
+    arg.as_bytes()
+        .strip_prefix(b"--output=")
+        .map(|path| OsStr::from_bytes(path).to_os_string())
+}
+
+#[cfg(windows)]
+fn parse_output_equals(arg: &OsStr) -> Option<OsString> {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
+    let mut units = arg.encode_wide();
+    for expected in "--output=".encode_utf16() {
+        if units.next() != Some(expected) {
+            return None;
+        }
+    }
+    Some(OsString::from_wide(&units.collect::<Vec<_>>()))
+}
+
+#[cfg(not(any(unix, windows)))]
 fn parse_output_equals(arg: &OsStr) -> Option<OsString> {
     let arg = arg.to_str()?;
     arg.strip_prefix("--output=").map(OsString::from)
