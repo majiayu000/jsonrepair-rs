@@ -37,4 +37,4 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --locked --all-features --test options_tests --test options_boundary_tests --test comment_policy_tests --test bounded_input_tests
+      - run: cargo test --locked --all-features --bin jsonrepair --test options_tests --test options_boundary_tests --test comment_policy_tests --test bounded_input_tests
