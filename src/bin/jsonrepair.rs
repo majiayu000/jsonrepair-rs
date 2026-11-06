@@ -219,4 +219,17 @@ mod tests {
             assert_eq!(parsed.encode_wide().collect::<Vec<_>>(), suffix);
         }
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn output_equals_preserves_non_utf8_bytes() {
+        use std::os::unix::ffi::{OsStrExt, OsStringExt};
+
+        for suffix in [vec![0xFF, b'='], vec![0xFE], "\u{FFFD}".as_bytes().to_vec()] {
+            let mut argument = b"--output=".to_vec();
+            argument.extend_from_slice(&suffix);
+            let parsed = parse_output_equals(&OsString::from_vec(argument)).unwrap();
+            assert_eq!(parsed.as_bytes(), suffix);
+        }
+    }
 }
