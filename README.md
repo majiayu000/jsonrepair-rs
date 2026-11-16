@@ -9,6 +9,12 @@
 
 Repair malformed JSON-like text and return valid JSON text.
 
+The published crate is **0.2.6**. This checkout prepares an **unpublished 0.2.7
+maintenance candidate** with CRLF continuation and native CLI output-path fixes.
+See the [draft release notes](docs/releases/v0.2.7.md) for scope and verification
+boundaries. The installation commands below use the published package; evaluate
+this candidate from its checkout or packaged source until publication.
+
 `jsonrepair-rs` is a Rust-native repair library for applications that receive
 structured JSON from LLMs, copied JavaScript/Python/MongoDB snippets, markdown
 code fences, logs, or truncated transport payloads. It is a Rust port inspired

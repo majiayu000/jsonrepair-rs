@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.7 - Unreleased
+
+This checkout prepares a maintenance release; crates.io still publishes 0.2.6.
+Draft release notes are in [`docs/releases/v0.2.7.md`](docs/releases/v0.2.7.md).
+
+### Fixed
+
+- Treat an escaped CRLF as one quoted-string line continuation, matching the
+  existing LF and CR behavior. Preserve adjacent literal newlines and escaped
+  backslashes; strict mode still rejects input requiring repair.
+- Preserve native OS path units in CLI `--output=...` arguments: Unix bytes and
+  Windows UTF-16 code units are no longer forced through UTF-8 conversion.
+
+### Compatibility
+
+- No public API, dependency, feature, default content-policy or error-type change
+  from 0.2.6. Rust 1.70 remains the core library and CLI minimum.
+- Reader/writer helpers still fully buffer input and repaired output. This is
+  not an incremental parser, a schema-validation release or a language binding.
+
 ## 0.2.6 - 2026-10-09
 
 ### Added
