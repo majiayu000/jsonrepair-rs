@@ -1,9 +1,8 @@
 # Changelog
 
-## 0.2.7 - Unreleased
+## 0.2.7 - 2026-11-16
 
-This checkout prepares a maintenance release; crates.io still publishes 0.2.6.
-Draft release notes are in [`docs/releases/v0.2.7.md`](docs/releases/v0.2.7.md).
+Release notes are in [`docs/releases/v0.2.7.md`](docs/releases/v0.2.7.md).
 
 ### Fixed
 
