@@ -12,6 +12,8 @@ Draft release notes are in [`docs/releases/v0.2.7.md`](docs/releases/v0.2.7.md).
   backslashes; strict mode still rejects input requiring repair.
 - Preserve native OS path units in CLI `--output=...` arguments: Unix bytes and
   Windows UTF-16 code units are no longer forced through UTF-8 conversion.
+- Iterate the character prefix directly when computing error coordinates, keeping
+  strict Clippy checks clean on Rust 1.100 without changing line/column semantics.
 
 ### Compatibility
 
