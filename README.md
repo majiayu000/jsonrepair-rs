@@ -9,11 +9,8 @@
 
 Repair malformed JSON-like text and return valid JSON text.
 
-The published crate is **0.2.6**. This checkout prepares an **unpublished 0.2.7
-maintenance candidate** with CRLF continuation and native CLI output-path fixes.
-See the [draft release notes](docs/releases/v0.2.7.md) for scope and verification
-boundaries. The installation commands below use the published package; evaluate
-this candidate from its checkout or packaged source until publication.
+Version **0.2.7** fixes CRLF continuations and native CLI output paths.
+See the [release notes](docs/releases/v0.2.7.md) for scope and verification boundaries.
 
 `jsonrepair-rs` is a Rust-native repair library for applications that receive
 structured JSON from LLMs, copied JavaScript/Python/MongoDB snippets, markdown
@@ -75,7 +72,7 @@ Or add it manually:
 
 ```toml
 [dependencies]
-jsonrepair-rs = "0.2.6"
+jsonrepair-rs = "0.2.7"
 ```
 
 Minimum supported Rust version for the core library and CLI: 1.70. The optional
