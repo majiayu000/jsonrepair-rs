@@ -21,13 +21,15 @@ an API change, a default content-policy change or unrelated parser work.
   literal content, all four content-option combinations, strict mode, chunked
   readers, Unix byte parsing and Windows UTF-16 parsing. No duplicate parser
   implementation or new test harness is added to the repository.
-- This candidate changes version metadata/locks, changelog and release documents
-  only. README clearly identifies 0.2.7 as unpublished and retains working 0.2.6
-  install examples. The fuzz lock records the same 0.2.7 path dependency.
+- The initial candidate changed version metadata/locks, changelog and release
+  documents only. The CI follow-up below additionally replaces an index loop with
+  equivalent prefix iteration in error-coordinate calculation. README clearly
+  identifies 0.2.7 as unpublished and retains working 0.2.6 install examples. The
+  fuzz lock records the same 0.2.7 path dependency.
 
 ## Local evidence
 
-Environment: macOS arm64; stable validation explicitly uses Rust/Cargo 1.99.1.
+Environment: macOS arm64; initial validation explicitly uses Rust/Cargo 1.99.1.
 MSRV uses the separately installed Rust/Cargo 1.70.0. Raw command outputs are in
 `target/release-readiness-20261116/` in this isolated worktree; they are not
 included in the crate. Package hashes and the final source revision are recorded
@@ -63,15 +65,55 @@ and to `helloworld` in the candidate. Ordinary malformed-object repair, LF and C
 continuations, and a quoted Windows-style path agree across both versions. This
 is a narrow library comparison, not a downstream application test.
 
+## CI follow-up: current stable Clippy
+
+PR [#95](https://github.com/majiayu000/jsonrepair-rs/pull/95) at
+`8f758e81fb9d141ff3e2f4aa1891d51cd63276b8` passed its `msrv` and
+`windows-content` checks. Its Linux `check` job reached Rust 1.100.0 and failed
+the new `clippy::needless_range_loop` lint in `compute_line_col`; this was not a
+test failure. The earlier Rust 1.99.1 local Clippy pass does not establish a
+Rust 1.100 pass.
+
+The follow-up changes only the traversal from indexing `0..min(pos, len)` to
+`self.chars.iter().take(pos)`, without changing LF handling or the Unicode-scalar
+coordinate unit. It does not pin/downgrade CI, suppress the lint or change error
+classification. Explicit Rust 1.100.0 checks and the existing coordinate/Unicode
+regressions are recorded separately from the initial candidate.
+
+Follow-up validation on macOS arm64, with an explicitly installed Rust 1.100.0
+(the global default toolchain was not changed):
+
+| Check | Evidence / status |
+| --- | --- |
+| Rust 1.70 core + CLI | Passed; `23-lint-msrv.log` |
+| Existing error-location / Unicode / content-policy regressions | 244 passed; `24-lint-location-regressions.log` |
+| Before/after error-coordinate comparison | Four synthetic cases retain exact position, line, column, kind and message; `25-coordinate-comparison.log` |
+| Rust 1.100 deny-warning all-target check / fmt / strict Clippy | Passed; `26-rust-1.100-check.log`, `27-rust-1.100-fmt.log`, `28-rust-1.100-clippy.log` |
+| Rust 1.100 default / all-feature tests | 333 / 350 passed, zero failures or ignores; `29-rust-1.100-default-tests.log`, `30-rust-1.100-all-feature-tests.log` |
+| Rust 1.100 all-feature doctest | One passed; `31-rust-1.100-doctests.log` |
+
+The coordinate comparison uses the old 0.2.7 package versus the successor source,
+both compiled with Rust 1.70. Invalid Unicode after a Han character, an emoji and
+CRLF retains coordinates `(10, 2, 9)`, `(8, 2, 3)` and `(11, 2, 9)` respectively;
+an invalid number retains `(0, 1, 1)`. This checks public error behavior rather
+than changing the error-coordinate unit.
+
+The old crate and manifest are preserved under
+`target/release-readiness-20261116/evidence/8f758e81fb9d141ff3e2f4aa1891d51cd63276b8/`.
+The final clean package and manifest bind the successor commit. Old-SHA MSRV and
+Windows success cannot replace the successor's own CI runs.
+
 ## Remaining acceptance boundaries
 
 Native Windows UTF-16 and Linux raw-filename execution must be supported by
 separate platform evidence; macOS/APFS does not execute the Linux raw-filename
 fixture. The repository already has Linux stable/MSRV and Windows content/CLI
-jobs, but adding a CI job is not a passing run. Baseline CI could not be read back:
+jobs, but adding a CI job is not a passing run. Baseline CI initially could not be read back:
 GitHub CLI/API returned a TLS handshake timeout; the one bounded independent API
 retry returned `RemoteDisconnected`. Thus neither baseline nor candidate Linux
-or Windows success is claimed here. A candidate PR must obtain its own CI runs.
+or Windows success was inferred from that failed readback. The subsequently read
+PR results above apply only to their stated SHA; a successor must obtain its own
+CI runs.
 
 No production payloads, real downstream workspace, Python/Node binding, new
 incremental parser, performance improvement, fuzz campaign or full schema

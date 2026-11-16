@@ -330,8 +330,8 @@ impl JsonRepairer {
     fn compute_line_col(&self, pos: usize) -> (usize, usize) {
         let mut line = 1;
         let mut col = 1;
-        for i in 0..pos.min(self.chars.len()) {
-            if self.chars[i] == '\n' {
+        for &c in self.chars.iter().take(pos) {
+            if c == '\n' {
                 line += 1;
                 col = 1;
             } else {
