@@ -656,17 +656,16 @@ impl JsonRepairer {
         next.map_or(true, |ch| matches!(ch, ',' | '}' | ']'))
     }
 
-    /// Whether the characters at `start` form a number that ends a value.
+    /// Whether the characters at `start` form a number followed by a value
+    /// boundary: whitespace, a delimiter, a quote or the end.
     fn number_ends_at(&self, start: usize) -> bool {
-        let end = self.chars[start..]
-            .iter()
-            .position(|&ch| !(chars::is_digit(ch) || matches!(ch, '.' | 'e' | 'E' | '+' | '-')))
-            .map_or(self.chars.len(), |len| start + len);
-        let next = self.chars[end..]
+        let next = self.chars[start..]
             .iter()
             .copied()
-            .find(|&ch| !chars::is_whitespace(ch));
-        next.map_or(true, |ch| chars::is_delimiter(ch) || chars::is_quote(ch))
+            .find(|&ch| !(chars::is_digit(ch) || matches!(ch, '.' | 'e' | 'E' | '+' | '-')));
+        next.map_or(true, |ch| {
+            chars::is_whitespace(ch) || chars::is_delimiter(ch) || chars::is_quote(ch)
+        })
     }
 
     fn insert_before_last_output_whitespace(&mut self, start: usize, text: &str) {

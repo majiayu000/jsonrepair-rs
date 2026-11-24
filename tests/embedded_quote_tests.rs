@@ -39,6 +39,7 @@ fn quote_boundaries_that_still_end_the_string() {
     ok(r#"["a"2]"#, r#"["a",2]"#);
     ok(r#"["a"2.5e3, 1]"#, r#"["a",2.5e3, 1]"#);
     ok(r#"{"a"1}"#, r#"{"a":1}"#);
+    ok(r#"["a"2 true,"b"]"#, r#"["a",2, true,"b"]"#);
     // Adjacent strings and empty strings keep their meaning.
     ok(r#"["a""b"]"#, r#"["a","b"]"#);
     ok(r#"["a",""]"#, r#"["a",""]"#);
