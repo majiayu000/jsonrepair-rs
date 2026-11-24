@@ -325,7 +325,7 @@ impl JsonRepairer {
         let key_start = self.pos;
         // Reuse the key parsers without consuming input or output, including on errors.
         let property = self
-            .parse_string(false)
+            .parse_key_string()
             .and_then(|parsed| {
                 if parsed {
                     Ok(true)

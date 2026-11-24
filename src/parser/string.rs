@@ -7,7 +7,12 @@ use super::Result;
 impl JsonRepairer {
     /// Parse a quoted string value.
     pub(super) fn parse_string(&mut self, is_wrapper_argument: bool) -> Result<bool> {
-        self.parse_string_internal(false, None, is_wrapper_argument)
+        self.parse_string_internal(false, None, is_wrapper_argument, false)
+    }
+
+    /// Parse a quoted object key; value-end heuristics do not apply to keys.
+    pub(super) fn parse_key_string(&mut self) -> Result<bool> {
+        self.parse_string_internal(false, None, false, true)
     }
 
     fn parse_string_internal(
@@ -15,6 +20,7 @@ impl JsonRepairer {
         stop_at_delimiter: bool,
         stop_at_index: Option<usize>,
         is_wrapper_argument: bool,
+        is_key: bool,
     ) -> Result<bool> {
         let skip_escape_chars =
             self.peek() == Some('\\') && self.peek_at(self.pos + 1).is_some_and(chars::is_quote);
@@ -70,7 +76,7 @@ impl JsonRepairer {
                     // Retry in conservative mode when we ended after a delimiter.
                     self.pos = input_start;
                     self.output.truncate(output_start);
-                    return self.parse_string_internal(true, None, is_wrapper_argument);
+                    return self.parse_string_internal(true, None, is_wrapper_argument, is_key);
                 }
 
                 self.insert_before_last_output_whitespace(output_start + 1, "\"");
@@ -95,7 +101,8 @@ impl JsonRepairer {
                 let quote_pos = self.pos;
                 let quote_output_pos = self.output.len();
                 // ["a "b""] -> the first quote of `""` closes the embedded "b.
-                let closes_embedded_quote = embedded_quote_open
+                let closes_embedded_quote = !is_key
+                    && embedded_quote_open
                     && self.peek_at(quote_pos + 1) == Some(c)
                     && self.value_ends_after(quote_pos + 2);
                 self.output.push('"');
@@ -131,14 +138,19 @@ impl JsonRepairer {
                     // {"a":"b,c,"d":"e"} -> stop at comma before quote.
                     self.pos = input_start;
                     self.output.truncate(output_start);
-                    return self.parse_string_internal(false, prev_non_ws, is_wrapper_argument);
+                    return self.parse_string_internal(
+                        false,
+                        prev_non_ws,
+                        is_wrapper_argument,
+                        is_key,
+                    );
                 }
 
                 if !closes_embedded_quote && prev_char.is_some_and(chars::is_delimiter) {
                     // End quote likely missing earlier.
                     self.pos = input_start;
                     self.output.truncate(output_start);
-                    return self.parse_string_internal(true, None, is_wrapper_argument);
+                    return self.parse_string_internal(true, None, is_wrapper_argument, is_key);
                 }
 
                 // Not a real closing quote: preserve it as string content.
@@ -656,14 +668,29 @@ impl JsonRepairer {
         next.map_or(true, |ch| matches!(ch, ',' | '}' | ']'))
     }
 
-    /// Whether the characters at `start` form a number followed by a value
-    /// boundary: whitespace, a delimiter, a quote or the end.
+    /// Whether a number (digits, fraction, signed exponent) starts at `start`
+    /// and is followed by a value boundary: whitespace, a delimiter, a quote
+    /// or the end. A sign outside the exponent is a delimiter, as in
+    /// `parse_number`.
     fn number_ends_at(&self, start: usize) -> bool {
-        let next = self.chars[start..]
-            .iter()
-            .copied()
-            .find(|&ch| !(chars::is_digit(ch) || matches!(ch, '.' | 'e' | 'E' | '+' | '-')));
-        next.map_or(true, |ch| {
+        let skip_digits = |mut idx: usize| {
+            while self.peek_at(idx).is_some_and(chars::is_digit) {
+                idx += 1;
+            }
+            idx
+        };
+        let mut idx = skip_digits(start);
+        if self.peek_at(idx) == Some('.') {
+            idx = skip_digits(idx + 1);
+        }
+        if matches!(self.peek_at(idx), Some('e' | 'E')) {
+            idx += 1;
+            if matches!(self.peek_at(idx), Some('+' | '-')) {
+                idx += 1;
+            }
+            idx = skip_digits(idx);
+        }
+        self.peek_at(idx).map_or(true, |ch| {
             chars::is_whitespace(ch) || chars::is_delimiter(ch) || chars::is_quote(ch)
         })
     }

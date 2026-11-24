@@ -40,6 +40,10 @@ fn quote_boundaries_that_still_end_the_string() {
     ok(r#"["a"2.5e3, 1]"#, r#"["a",2.5e3, 1]"#);
     ok(r#"{"a"1}"#, r#"{"a":1}"#);
     ok(r#"["a"2 true,"b"]"#, r#"["a",2, true,"b"]"#);
+    ok(r#"["a"2+Infinity,"b"]"#, r#"["a",2,null,"b"]"#);
+    ok(r#"["a"2e+5 ,1]"#, r#"["a",2e+5 ,1]"#);
+    // Keys keep their own recovery: the value-end rule does not apply.
+    ok(r#"{"a"b"","z":1}"#, r#"{"a\"b":"","z":1}"#);
     // Adjacent strings and empty strings keep their meaning.
     ok(r#"["a""b"]"#, r#"["a","b"]"#);
     ok(r#"["a",""]"#, r#"["a",""]"#);
