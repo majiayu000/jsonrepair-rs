@@ -56,6 +56,7 @@ impl JsonRepairer {
             })
         };
         let mut url_followed_by_content = false;
+        let mut embedded_quote_open = false;
 
         loop {
             if self.at_end() {
@@ -93,16 +94,28 @@ impl JsonRepairer {
             if is_end_quote {
                 let quote_pos = self.pos;
                 let quote_output_pos = self.output.len();
+                // ["a "b""] -> the first quote of `""` closes the embedded "b.
+                let closes_embedded_quote = embedded_quote_open
+                    && self.peek_at(quote_pos + 1) == Some(c)
+                    && self.value_ends_after(quote_pos + 2);
                 self.output.push('"');
                 self.pos += 1;
 
                 self.parse_whitespace_and_comments_with_newline(false);
                 let next = self.peek();
-                if stop_at_delimiter
-                    || next.is_none()
-                    || next.is_some_and(|ch| {
-                        chars::is_delimiter(ch) || chars::is_quote(ch) || chars::is_digit(ch)
-                    })
+                // {"a":"b"2} -> 2 is the next value; {"a":"b"2c"} -> keep the quote.
+                let next_value_is_number = |ch: char| {
+                    chars::is_digit(ch)
+                        && (self.pos > quote_pos + 1 || self.number_ends_at(self.pos))
+                };
+                if !closes_embedded_quote
+                    && (stop_at_delimiter
+                        || next.is_none()
+                        || next.is_some_and(|ch| {
+                            chars::is_delimiter(ch)
+                                || chars::is_quote(ch)
+                                || next_value_is_number(ch)
+                        }))
                 {
                     self.parse_concatenated_string(is_wrapper_argument)?;
                     return Ok(true);
@@ -113,14 +126,15 @@ impl JsonRepairer {
                     .and_then(|idx| self.prev_non_whitespace_index(idx));
                 let prev_char = prev_non_ws.and_then(|idx| self.peek_at(idx));
 
-                if prev_char == Some(',') && stop_at_index != prev_non_ws {
+                if !closes_embedded_quote && prev_char == Some(',') && stop_at_index != prev_non_ws
+                {
                     // {"a":"b,c,"d":"e"} -> stop at comma before quote.
                     self.pos = input_start;
                     self.output.truncate(output_start);
                     return self.parse_string_internal(false, prev_non_ws, is_wrapper_argument);
                 }
 
-                if prev_char.is_some_and(chars::is_delimiter) {
+                if !closes_embedded_quote && prev_char.is_some_and(chars::is_delimiter) {
                     // End quote likely missing earlier.
                     self.pos = input_start;
                     self.output.truncate(output_start);
@@ -128,6 +142,7 @@ impl JsonRepairer {
                 }
 
                 // Not a real closing quote: preserve it as string content.
+                embedded_quote_open = !embedded_quote_open;
                 self.output.truncate(quote_output_pos);
                 if c == '"' {
                     self.output.push_str("\\\"");
@@ -630,6 +645,28 @@ impl JsonRepairer {
             slash_idx >= start + scheme.len()
                 && self.slice_eq(slash_idx - scheme.len(), slash_idx, scheme)
         })
+    }
+
+    /// Whether only whitespace and then `,`, `}`, `]` or the end follow `start`.
+    fn value_ends_after(&self, start: usize) -> bool {
+        let next = self.chars[start.min(self.chars.len())..]
+            .iter()
+            .copied()
+            .find(|&ch| !chars::is_whitespace(ch));
+        next.map_or(true, |ch| matches!(ch, ',' | '}' | ']'))
+    }
+
+    /// Whether the characters at `start` form a number that ends a value.
+    fn number_ends_at(&self, start: usize) -> bool {
+        let end = self.chars[start..]
+            .iter()
+            .position(|&ch| !(chars::is_digit(ch) || matches!(ch, '.' | 'e' | 'E' | '+' | '-')))
+            .map_or(self.chars.len(), |len| start + len);
+        let next = self.chars[end..]
+            .iter()
+            .copied()
+            .find(|&ch| !chars::is_whitespace(ch));
+        next.map_or(true, |ch| chars::is_delimiter(ch) || chars::is_quote(ch))
     }
 
     fn insert_before_last_output_whitespace(&mut self, start: usize, text: &str) {
