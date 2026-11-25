@@ -13,6 +13,7 @@ mod number;
 mod object;
 mod string;
 mod toplevel;
+mod wrapper;
 
 // Bound both containers and recursive repairs on a 2 MiB worker stack.
 const MAX_DEPTH: usize = 128;
